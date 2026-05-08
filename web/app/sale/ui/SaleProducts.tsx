@@ -1,31 +1,24 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { Lang, SaleProduct, SaleSetting } from "./sale-types";
 import { STRAPI_URL } from "./sale-utils";
+
+type Copy = Record<string, string>;
 
 type Props = {
   lang: Lang;
   setting: SaleSetting | null;
   products: SaleProduct[];
   loading: boolean;
-  copy?: {
-    productsEyebrow?: string;
-    productsTitle?: string;
-    found?: string;
-    loading?: string;
-  };
+  copy?: Copy;
 };
 
 type PreviewImage = {
   src: string;
   title: string;
 };
-
-const PHONE_DISPLAY = "+998 90 002 12 30";
-const PHONE_HREF = "tel:+998900021230";
-const TELEGRAM_URL = "https://t.me/Mebel_LD";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -36,289 +29,344 @@ function getProp(obj: unknown, key: string): unknown {
 }
 
 function asString(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number") return String(value);
+  return "";
 }
 
 function asNumber(value: unknown): number {
-  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
 
   if (typeof value === "string") {
-    const cleaned = value.replace(/\s/g, "").replace(/[^\d.-]/g, "");
-    const n = Number(cleaned);
-    return Number.isFinite(n) ? n : 0;
+    const cleaned = value.replace(/[^\d.-]/g, "");
+    const num = Number(cleaned);
+    return Number.isFinite(num) ? num : 0;
   }
 
   return 0;
 }
 
-function getAttributes(item: SaleProduct): Record<string, unknown> {
-  const maybeAttributes = getProp(item, "attributes");
+function formatPrice(value: unknown) {
+  const price = asNumber(value);
 
-  if (isRecord(maybeAttributes)) return maybeAttributes;
-
-  return isRecord(item) ? item : {};
-}
-
-function pickText(item: SaleProduct, lang: Lang, key: string): string {
-  const attrs = getAttributes(item);
-
-  if (lang === "uz") {
-    const uz = asString(attrs[`${key}_uz`]);
-    if (uz) return uz;
-  }
-
-  return asString(attrs[key]);
-}
-
-function pickTitle(item: SaleProduct, lang: Lang): string {
-  return (
-    pickText(item, lang, "title") ||
-    pickText(item, "ru", "title") ||
-    "Товар RichHouse"
-  );
-}
-
-function pickPrice(item: SaleProduct): number {
-  const attrs = getAttributes(item);
-  return asNumber(attrs.price);
-}
-
-function formatPrice(value: number): string {
-  if (!value) return "Цена по запросу";
+  if (!price) return "Цена по запросу";
 
   return `${new Intl.NumberFormat("ru-RU", {
     maximumFractionDigits: 0,
-  }).format(value)} UZS`;
+  }).format(price)} UZS`;
 }
 
-function getImageFromMedia(value: unknown): string {
-  if (!value) return "";
+function cleanBaseUrl(url: string) {
+  return url.replace(/\/+$/, "");
+}
 
-  if (typeof value === "string") return value;
+function resolveImageUrl(url: string) {
+  const clean = url.trim();
 
-  if (Array.isArray(value)) {
-    const first = value[0];
-    return getImageFromMedia(first);
+  if (!clean) return "";
+
+  if (clean.startsWith("http://") || clean.startsWith("https://")) {
+    return clean;
   }
 
-  if (!isRecord(value)) return "";
+  if (clean.startsWith("/uploads/")) {
+    return `${cleanBaseUrl(STRAPI_URL)}${clean}`;
+  }
 
-  const directUrl = asString(value.url);
-  if (directUrl) return directUrl;
+  return `${cleanBaseUrl(STRAPI_URL)}/uploads/${clean.replace(/^\/+/, "")}`;
+}
 
-  const data = value.data;
-  if (Array.isArray(data)) return getImageFromMedia(data[0]);
-  if (isRecord(data)) return getImageFromMedia(data);
+function getMediaUrl(media: unknown): string {
+  if (!media) return "";
 
-  const attrs = value.attributes;
-  if (isRecord(attrs)) return getImageFromMedia(attrs);
+  if (typeof media === "string") {
+    return resolveImageUrl(media);
+  }
+
+  if (Array.isArray(media)) {
+    return getMediaUrl(media[0]);
+  }
+
+  if (!isRecord(media)) return "";
+
+  const directUrl = asString(media.url);
+  if (directUrl) return resolveImageUrl(directUrl);
+
+  const data = media.data;
+
+  if (Array.isArray(data)) {
+    return getMediaUrl(data[0]);
+  }
+
+  if (isRecord(data)) {
+    const dataUrl = asString(data.url);
+    if (dataUrl) return resolveImageUrl(dataUrl);
+
+    const attributes = data.attributes;
+    if (isRecord(attributes)) {
+      const attrUrl = asString(attributes.url);
+      if (attrUrl) return resolveImageUrl(attrUrl);
+    }
+  }
+
+  const attributes = media.attributes;
+  if (isRecord(attributes)) {
+    const attrUrl = asString(attributes.url);
+    if (attrUrl) return resolveImageUrl(attrUrl);
+  }
 
   return "";
 }
 
-function resolveImageUrl(path: string): string {
-  if (!path) return "";
+function getProductImage(product: SaleProduct) {
+  const image = getProp(product, "image");
+  const imageUrl = getMediaUrl(image);
 
-  if (path.startsWith("http://") || path.startsWith("https://")) {
-    return path;
-  }
+  if (imageUrl) return imageUrl;
 
-  if (path.startsWith("/")) {
-    return `${STRAPI_URL}${path}`;
-  }
-
-  return `${STRAPI_URL}/uploads/${path}`;
-}
-
-function pickImage(item: SaleProduct): string {
-  const attrs = getAttributes(item);
-
-  const mediaUrl =
-    getImageFromMedia(attrs.image) ||
-    getImageFromMedia(attrs.photo) ||
-    getImageFromMedia(attrs.media) ||
-    getImageFromMedia(attrs.cover);
-
-  if (mediaUrl) return resolveImageUrl(mediaUrl);
-
-  const imageFile = asString(attrs.imageFile);
+  const imageFile = asString(getProp(product, "imageFile"));
   if (imageFile) return resolveImageUrl(imageFile);
 
   return "";
 }
 
-export default function SaleProducts({ lang, products, loading, copy }: Props) {
+function getTitle(product: SaleProduct, lang: Lang) {
+  const titleUz = asString(getProp(product, "title_uz"));
+  const titleRu = asString(getProp(product, "title"));
+
+  if (lang === "uz" && titleUz) return titleUz;
+
+  return titleRu || titleUz || "Товар RichHouse";
+}
+
+function getPhone(product: SaleProduct, setting: SaleSetting | null) {
+  return (
+    asString(getProp(product, "phone")) ||
+    asString(getProp(setting, "phone")) ||
+    "+998 90 925 60 06"
+  );
+}
+
+function getPhoneHref(phone: string) {
+  const clean = phone.replace(/[^\d+]/g, "");
+  return `tel:${clean}`;
+}
+
+function getTelegram(product: SaleProduct, setting: SaleSetting | null) {
+  const productTelegram = asString(getProp(product, "telegram"));
+  const settingTelegram = asString(getProp(setting, "telegram"));
+
+  return productTelegram || settingTelegram || "";
+}
+
+function makeTelegramHref(raw: string) {
+  const value = raw.trim();
+
+  if (!value) return "";
+
+  if (value.startsWith("http://") || value.startsWith("https://")) {
+    return value;
+  }
+
+  if (value.startsWith("@")) {
+    return `https://t.me/${value.slice(1)}`;
+  }
+
+  return `https://t.me/${value}`;
+}
+
+function getItemKey(product: SaleProduct, index: number) {
+  const id = asString(getProp(product, "id"));
+  const documentId = asString(getProp(product, "documentId"));
+  const sku = asString(getProp(product, "sku"));
+  const title = asString(getProp(product, "title"));
+
+  return documentId || id || sku || `${title}-${index}`;
+}
+
+export default function SaleProducts({
+  lang,
+  setting,
+  products,
+  loading,
+  copy,
+}: Props) {
   const [previewImage, setPreviewImage] = useState<PreviewImage | null>(null);
 
-  const sectionCopy = useMemo(
-    () => ({
-      eyebrow:
-        copy?.productsEyebrow ||
-        (lang === "uz" ? "SOTUV MAHSULOTLARI" : "ТОВАРЫ РАСПРОДАЖИ"),
-      title:
-        copy?.productsTitle ||
-        (lang === "uz" ? "Mahsulotni tanlang" : "Выберите позицию"),
-      found: copy?.found || (lang === "uz" ? "Topildi" : "Найдено"),
-      loading:
-        copy?.loading || (lang === "uz" ? "Yuklanmoqda..." : "Загрузка..."),
-      noPhoto: lang === "uz" ? "RASM YO‘Q" : "НЕТ ФОТО",
-      call: lang === "uz" ? "Qo‘ng‘iroq qilish" : "Позвонить",
-      telegram:
-        lang === "uz" ? "Telegram orqali yozish" : "Написать в Telegram",
-      close: lang === "uz" ? "Yopish" : "Закрыть",
-      empty: lang === "uz" ? "Hozircha mahsulotlar yo‘q" : "Пока товаров нет",
-    }),
-    [copy, lang],
-  );
-
-  useEffect(() => {
-    if (!previewImage) return;
-
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setPreviewImage(null);
-      }
-    }
-
-    document.addEventListener("keydown", onKeyDown);
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = "";
-    };
-  }, [previewImage]);
-
-  const items = useMemo(() => {
-    return [...products].sort((a, b) => {
-      const aa = asNumber(getAttributes(a).sortOrder) || 1000;
-      const bb = asNumber(getAttributes(b).sortOrder) || 1000;
-      return aa - bb;
-    });
+  const visibleProducts = useMemo(() => {
+    return Array.isArray(products) ? products : [];
   }, [products]);
 
+  const sectionTitle =
+    lang === "uz"
+      ? copy?.productsTitle || "Pozitsiyani tanlang"
+      : copy?.productsTitle || "Выберите позицию";
+
+  const sectionLabel =
+    lang === "uz"
+      ? copy?.productsLabel || "Sotuvdagi mahsulotlar"
+      : copy?.productsLabel || "Товары распродажи";
+
+  const foundText =
+    lang === "uz"
+      ? `Topildi: ${visibleProducts.length} ta mahsulot`
+      : `Найдено: ${visibleProducts.length} товаров`;
+
+  const callText = lang === "uz" ? "Qo‘ng‘iroq qilish" : "Позвонить";
+  const telegramText =
+    lang === "uz" ? "Telegramga yozish" : "Написать в Telegram";
+
   return (
-    <section id="products" className="relative px-4 pb-20 pt-8 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-8 flex flex-col gap-4 sm:mb-10 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="gold-text mb-2 text-xs font-black uppercase tracking-[0.42em]">
-              {sectionCopy.eyebrow}
-            </p>
+    <>
+      <section
+        className="relative px-4 pb-20 pt-8 sm:px-6 lg:px-8"
+        id="sale-products"
+      >
+        <div className="mx-auto max-w-7xl">
+          <div className="mb-8 flex flex-col gap-3 sm:mb-10 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="gold-text mb-3 text-xs font-black uppercase tracking-[0.42em]">
+                {sectionLabel}
+              </p>
 
-            <h2 className="max-w-3xl text-5xl font-black leading-[0.92] tracking-[-0.06em] text-[#111113] sm:text-6xl lg:text-7xl">
-              {sectionCopy.title}
-            </h2>
+              <h2 className="max-w-4xl text-5xl font-black tracking-[-0.06em] text-[#111] sm:text-6xl lg:text-7xl">
+                {sectionTitle}
+              </h2>
+            </div>
+
+            <p className="text-sm font-semibold text-[#777]">{foundText}</p>
           </div>
 
-          <p className="text-sm font-semibold text-[#7b7b82]">
-            {loading
-              ? sectionCopy.loading
-              : `${sectionCopy.found}: ${items.length} товаров`}
-          </p>
-        </div>
+          {loading ? (
+            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+              {Array.from({ length: 6 }).map((_, index) => (
+                <div
+                  key={index}
+                  className="soft-card h-[520px] animate-pulse rounded-[32px]"
+                />
+              ))}
+            </div>
+          ) : visibleProducts.length ? (
+            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+              {visibleProducts.map((product, index) => {
+                const title = getTitle(product, lang);
+                const imageUrl = getProductImage(product);
+                const phone = getPhone(product, setting);
+                const telegram = makeTelegramHref(
+                  getTelegram(product, setting),
+                );
+                const price = getProp(product, "price");
 
-        {loading ? (
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 6 }).map((_, index) => (
-              <div
-                key={index}
-                className="soft-card h-[520px] animate-pulse rounded-[32px]"
-              />
-            ))}
-          </div>
-        ) : items.length === 0 ? (
-          <div className="soft-card rounded-[32px] px-6 py-12 text-center text-lg font-bold text-[#7b7b82]">
-            {sectionCopy.empty}
-          </div>
-        ) : (
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {items.map((product, index) => {
-              const title = pickTitle(product, lang);
-              const price = pickPrice(product);
-              const imageSrc = pickImage(product);
-
-              return (
-                <article
-                  key={`${title}-${index}`}
-                  className="product-card group overflow-hidden rounded-[32px] bg-white shadow-[0_18px_55px_rgba(0,0,0,0.08)] ring-1 ring-black/5"
-                  style={{ "--i": index } as React.CSSProperties}
-                >
-                  {imageSrc ? (
+                return (
+                  <article
+                    key={getItemKey(product, index)}
+                    className="product-card soft-card group overflow-hidden rounded-[32px]"
+                    style={{ "--i": index } as React.CSSProperties}
+                  >
                     <button
                       type="button"
-                      onClick={() => setPreviewImage({ src: imageSrc, title })}
-                      className="relative block h-[300px] w-full overflow-hidden bg-white text-left sm:h-[320px] lg:h-[340px]"
+                      className="relative block h-[300px] w-full overflow-hidden bg-white text-left sm:h-[315px]"
+                      onClick={() => {
+                        if (imageUrl) {
+                          setPreviewImage({
+                            src: imageUrl,
+                            title,
+                          });
+                        }
+                      }}
                       aria-label={title}
                     >
-                      <Image
-                        src={imageSrc}
-                        alt={title}
-                        fill
-                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                        className="image-soft object-cover object-top scale-[1.12]"
-                      />
+                      {imageUrl ? (
+                        <Image
+                          src={imageUrl}
+                          alt={title}
+                          fill
+                          sizes="(max-width: 768px) 100vw, 33vw"
+                          className="image-soft object-contain p-3"
+                          priority={index < 3}
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center bg-[#e5e5e5]">
+                          <span className="text-xs font-black uppercase tracking-[0.35em] text-[#aaa]">
+                            Нет фото
+                          </span>
+                        </div>
+                      )}
                     </button>
-                  ) : (
-                    <div className="flex h-[300px] w-full items-center justify-center bg-[#ededee] sm:h-[320px] lg:h-[340px]">
-                      <span className="text-sm font-black uppercase tracking-[0.35em] text-[#a7a7ad]">
-                        {sectionCopy.noPhoto}
-                      </span>
+
+                    <div className="relative z-10 bg-white px-7 pb-7 pt-6 sm:px-8 sm:pb-8">
+                      <h3 className="min-h-[62px] text-2xl font-black leading-[1.08] tracking-[-0.04em] text-[#111]">
+                        {title}
+                      </h3>
+
+                      <div className="mt-5 text-3xl font-black tracking-[-0.04em] text-[#111]">
+                        {formatPrice(price)}
+                      </div>
+
+                      <div className="mt-7 grid grid-cols-2 gap-3">
+                        <a
+                          href={getPhoneHref(phone)}
+                          className="btn-premium flex h-14 items-center justify-center rounded-full bg-[#16b84e] px-4 text-center text-sm font-black text-white shadow-[0_16px_36px_rgba(22,184,78,0.22)]"
+                        >
+                          {callText}
+                        </a>
+
+                        {telegram ? (
+                          <a
+                            href={telegram}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="btn-premium flex h-14 items-center justify-center rounded-full bg-[#1da1d8] px-4 text-center text-sm font-black text-white shadow-[0_16px_36px_rgba(29,161,216,0.18)]"
+                          >
+                            {telegramText}
+                          </a>
+                        ) : (
+                          <a
+                            href={getPhoneHref(phone)}
+                            className="btn-premium flex h-14 items-center justify-center rounded-full bg-[#1da1d8] px-4 text-center text-sm font-black text-white shadow-[0_16px_36px_rgba(29,161,216,0.18)]"
+                          >
+                            {telegramText}
+                          </a>
+                        )}
+                      </div>
                     </div>
-                  )}
-
-                  <div className="p-6 sm:p-7">
-                    <h3 className="mb-4 min-h-[58px] text-2xl font-black leading-[1.08] tracking-[-0.04em] text-[#111113]">
-                      {title}
-                    </h3>
-
-                    <p className="mb-6 text-3xl font-black tracking-[-0.05em] text-[#111113]">
-                      {formatPrice(price)}
-                    </p>
-
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <a
-                        href={PHONE_HREF}
-                        className="btn-premium flex h-14 items-center justify-center rounded-full bg-[#12b84f] px-5 text-center text-sm font-black text-white shadow-[0_14px_30px_rgba(18,184,79,0.25)]"
-                      >
-                        {sectionCopy.call}
-                      </a>
-
-                      <a
-                        href={TELEGRAM_URL}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="btn-premium flex h-14 items-center justify-center rounded-full bg-[#229ed9] px-5 text-center text-sm font-black text-white shadow-[0_14px_30px_rgba(34,158,217,0.25)]"
-                      >
-                        {sectionCopy.telegram}
-                      </a>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        )}
-      </div>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="soft-card rounded-[32px] px-8 py-14 text-center">
+              <p className="text-lg font-bold text-[#777]">
+                {lang === "uz"
+                  ? "Hozircha mahsulotlar yo‘q"
+                  : "Пока товаров нет"}
+              </p>
+            </div>
+          )}
+        </div>
+      </section>
 
       {previewImage ? (
         <div
-          className="fixed inset-0 z-[999] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
-          role="dialog"
-          aria-modal="true"
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
           onClick={() => setPreviewImage(null)}
         >
           <button
             type="button"
-            onClick={() => setPreviewImage(null)}
-            className="absolute right-4 top-4 z-10 flex h-12 w-12 items-center justify-center rounded-full bg-white text-2xl font-black text-black shadow-xl"
-            aria-label={sectionCopy.close}
+            className="absolute right-4 top-4 z-[130] flex h-11 w-11 items-center justify-center rounded-full bg-white text-2xl font-black text-black shadow-xl"
+            onClick={(event) => {
+              event.stopPropagation();
+              setPreviewImage(null);
+            }}
+            aria-label="Закрыть"
           >
             ×
           </button>
 
           <div
-            className="relative h-[82vh] w-full max-w-5xl overflow-hidden rounded-[28px] bg-white"
+            className="relative h-[86vh] w-full max-w-6xl overflow-hidden rounded-[28px] bg-white"
             onClick={(event) => event.stopPropagation()}
           >
             <Image
@@ -326,12 +374,12 @@ export default function SaleProducts({ lang, products, loading, copy }: Props) {
               alt={previewImage.title}
               fill
               sizes="100vw"
-              className="object-contain"
+              className="object-contain p-3 sm:p-6"
               priority
             />
           </div>
         </div>
       ) : null}
-    </section>
+    </>
   );
 }
