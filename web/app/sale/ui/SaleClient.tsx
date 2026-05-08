@@ -44,7 +44,7 @@ export default function SaleClient() {
             cache: "no-store",
           }),
           fetch(
-            `${STRAPI_URL}/api/sale-products?populate=*&sort=sortOrder:asc`,
+            `${STRAPI_URL}/api/sale-products?populate=*&pagination[pageSize]=200&sort=sortOrder:asc`,
             {
               cache: "no-store",
             },
