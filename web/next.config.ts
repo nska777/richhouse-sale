@@ -15,7 +15,12 @@ const nextConfig: NextConfig = {
         hostname: "127.0.0.1",
         port: "1337",
         pathname: "/uploads/**",
-      }
+      },
+      {
+        protocol: "https",
+        hostname: "api.rframe.ru",
+        pathname: "/uploads/**",
+      },
     ],
   },
 };
