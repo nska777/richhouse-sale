@@ -7,6 +7,7 @@ import { STRAPI_URL } from "./sale-utils";
 type Props = {
   lang: Lang;
   setting: SaleSetting | null;
+  copy?: unknown;
 
   // поддерживаем оба варианта, чтобы не падало
   onLangChange?: (lang: Lang) => void;
