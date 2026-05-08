@@ -1,18 +1,15 @@
 "use client";
 
-import Image from "next/image";
 import { useMemo, useState } from "react";
 import type { Lang, SaleProduct, SaleSetting } from "./sale-types";
 import { STRAPI_URL } from "./sale-utils";
-
-type Copy = Record<string, string>;
 
 type Props = {
   lang: Lang;
   setting: SaleSetting | null;
   products: SaleProduct[];
   loading: boolean;
-  copy?: Copy;
+  copy?: Record<string, string>;
 };
 
 type PreviewImage = {
@@ -24,166 +21,180 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function getProp(obj: unknown, key: string): unknown {
-  return isRecord(obj) ? obj[key] : undefined;
+function getValue(obj: unknown, key: string): unknown {
+  if (!isRecord(obj)) return undefined;
+  return obj[key];
 }
 
-function asString(value: unknown): string {
+function toText(value: unknown): string {
   if (typeof value === "string") return value.trim();
   if (typeof value === "number") return String(value);
+  if (typeof value === "boolean") return value ? "true" : "false";
   return "";
 }
 
-function asNumber(value: unknown): number {
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? value : 0;
-  }
+function toNumber(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
 
   if (typeof value === "string") {
-    const cleaned = value.replace(/[^\d.-]/g, "");
-    const num = Number(cleaned);
+    const normalized = value.replace(/\s/g, "").replace(",", ".");
+    const num = Number(normalized);
     return Number.isFinite(num) ? num : 0;
   }
 
   return 0;
 }
 
-function formatPrice(value: unknown) {
-  const price = asNumber(value);
+function formatPhoneHref(phone: string) {
+  const digits = phone.replace(/[^\d+]/g, "");
 
-  if (!price) return "Цена по запросу";
+  if (!digits) return "";
 
-  return `${new Intl.NumberFormat("ru-RU", {
-    maximumFractionDigits: 0,
-  }).format(price)} UZS`;
+  if (digits.startsWith("+")) {
+    return `tel:${digits}`;
+  }
+
+  return `tel:+${digits.replace(/[^\d]/g, "")}`;
 }
 
-function cleanBaseUrl(url: string) {
-  return url.replace(/\/+$/, "");
+function normalizeTelegramLink(value: string) {
+  const raw = value.trim();
+
+  if (!raw) return "";
+
+  if (raw.startsWith("http://") || raw.startsWith("https://")) {
+    return raw;
+  }
+
+  if (raw.startsWith("@")) {
+    return `https://t.me/${raw.slice(1)}`;
+  }
+
+  return `https://t.me/${raw}`;
 }
 
-function resolveImageUrl(url: string) {
-  const clean = url.trim();
+function resolveMediaUrl(value: unknown): string {
+  if (!value) return "";
 
-  if (!clean) return "";
-
-  if (clean.startsWith("http://") || clean.startsWith("https://")) {
-    return clean;
-  }
-
-  if (clean.startsWith("/uploads/")) {
-    return `${cleanBaseUrl(STRAPI_URL)}${clean}`;
-  }
-
-  return `${cleanBaseUrl(STRAPI_URL)}/uploads/${clean.replace(/^\/+/, "")}`;
-}
-
-function getMediaUrl(media: unknown): string {
-  if (!media) return "";
-
-  if (typeof media === "string") {
-    return resolveImageUrl(media);
-  }
-
-  if (Array.isArray(media)) {
-    return getMediaUrl(media[0]);
-  }
-
-  if (!isRecord(media)) return "";
-
-  const directUrl = asString(media.url);
-  if (directUrl) return resolveImageUrl(directUrl);
-
-  const data = media.data;
-
-  if (Array.isArray(data)) {
-    return getMediaUrl(data[0]);
-  }
-
-  if (isRecord(data)) {
-    const dataUrl = asString(data.url);
-    if (dataUrl) return resolveImageUrl(dataUrl);
-
-    const attributes = data.attributes;
-    if (isRecord(attributes)) {
-      const attrUrl = asString(attributes.url);
-      if (attrUrl) return resolveImageUrl(attrUrl);
+  if (typeof value === "string") {
+    if (!value.trim()) return "";
+    if (value.startsWith("http://") || value.startsWith("https://")) {
+      return value;
     }
+    if (value.startsWith("/")) {
+      return `${STRAPI_URL}${value}`;
+    }
+    return value;
   }
 
-  const attributes = media.attributes;
-  if (isRecord(attributes)) {
-    const attrUrl = asString(attributes.url);
-    if (attrUrl) return resolveImageUrl(attrUrl);
+  if (Array.isArray(value)) {
+    return resolveMediaUrl(value[0]);
+  }
+
+  if (!isRecord(value)) return "";
+
+  const directUrl = toText(value.url);
+  if (directUrl) return resolveMediaUrl(directUrl);
+
+  const data = value.data;
+  if (Array.isArray(data)) return resolveMediaUrl(data[0]);
+  if (data) return resolveMediaUrl(data);
+
+  const attributes = value.attributes;
+  if (attributes) return resolveMediaUrl(attributes);
+
+  const formats = value.formats;
+  if (isRecord(formats)) {
+    const large = resolveMediaUrl(formats.large);
+    if (large) return large;
+
+    const medium = resolveMediaUrl(formats.medium);
+    if (medium) return medium;
+
+    const small = resolveMediaUrl(formats.small);
+    if (small) return small;
   }
 
   return "";
 }
 
-function getProductImage(product: SaleProduct) {
-  const image = getProp(product, "image");
-  const imageUrl = getMediaUrl(image);
+function getProductImage(product: SaleProduct): string {
+  const directImage = resolveMediaUrl(getValue(product, "image"));
+  if (directImage) return directImage;
 
-  if (imageUrl) return imageUrl;
-
-  const imageFile = asString(getProp(product, "imageFile"));
-  if (imageFile) return resolveImageUrl(imageFile);
+  const attributes = getValue(product, "attributes");
+  const attrImage = resolveMediaUrl(getValue(attributes, "image"));
+  if (attrImage) return attrImage;
 
   return "";
 }
 
-function getTitle(product: SaleProduct, lang: Lang) {
-  const titleUz = asString(getProp(product, "title_uz"));
-  const titleRu = asString(getProp(product, "title"));
+function getProductTitle(product: SaleProduct, lang: Lang): string {
+  const attributes = getValue(product, "attributes");
+  const source = isRecord(attributes) ? attributes : product;
+
+  const titleUz = toText(getValue(source, "title_uz"));
+  const titleRu = toText(getValue(source, "title"));
+  const sku = toText(getValue(source, "sku"));
 
   if (lang === "uz" && titleUz) return titleUz;
+  if (titleRu) return titleRu;
+  if (titleUz) return titleUz;
+  if (sku) return sku;
 
-  return titleRu || titleUz || "Товар RichHouse";
+  return "Товар RichHouse";
 }
 
-function getPhone(product: SaleProduct, setting: SaleSetting | null) {
+function getProductSortOrder(product: SaleProduct) {
+  const attributes = getValue(product, "attributes");
+  const source = isRecord(attributes) ? attributes : product;
+
+  const sortOrder = toNumber(getValue(source, "sortOrder"));
+  return sortOrder || 9999;
+}
+
+function getProductIsActive(product: SaleProduct) {
+  const attributes = getValue(product, "attributes");
+  const source = isRecord(attributes) ? attributes : product;
+
+  return getValue(source, "isActive") !== false;
+}
+
+function getProductPhone(product: SaleProduct, setting: SaleSetting | null) {
+  const attributes = getValue(product, "attributes");
+  const source = isRecord(attributes) ? attributes : product;
+
   return (
-    asString(getProp(product, "phone")) ||
-    asString(getProp(setting, "phone")) ||
+    toText(getValue(source, "phone")) ||
+    toText(getValue(setting, "phone")) ||
     "+998 90 925 60 06"
   );
 }
 
-function getPhoneHref(phone: string) {
-  const clean = phone.replace(/[^\d+]/g, "");
-  return `tel:${clean}`;
+function getProductTelegram(product: SaleProduct, setting: SaleSetting | null) {
+  const attributes = getValue(product, "attributes");
+  const source = isRecord(attributes) ? attributes : product;
+
+  return (
+    toText(getValue(source, "telegram")) ||
+    toText(getValue(setting, "telegram")) ||
+    ""
+  );
 }
 
-function getTelegram(product: SaleProduct, setting: SaleSetting | null) {
-  const productTelegram = asString(getProp(product, "telegram"));
-  const settingTelegram = asString(getProp(setting, "telegram"));
+function ProductSkeleton() {
+  return (
+    <div className="overflow-hidden rounded-[34px] bg-white shadow-[0_24px_80px_rgba(0,0,0,0.08)]">
+      <div className="flex h-[340px] items-center justify-center bg-[#eeeeef] text-xs font-black uppercase tracking-[0.45em] text-black/25 sm:h-[380px]">
+        Нет фото
+      </div>
 
-  return productTelegram || settingTelegram || "";
-}
-
-function makeTelegramHref(raw: string) {
-  const value = raw.trim();
-
-  if (!value) return "";
-
-  if (value.startsWith("http://") || value.startsWith("https://")) {
-    return value;
-  }
-
-  if (value.startsWith("@")) {
-    return `https://t.me/${value.slice(1)}`;
-  }
-
-  return `https://t.me/${value}`;
-}
-
-function getItemKey(product: SaleProduct, index: number) {
-  const id = asString(getProp(product, "id"));
-  const documentId = asString(getProp(product, "documentId"));
-  const sku = asString(getProp(product, "sku"));
-  const title = asString(getProp(product, "title"));
-
-  return documentId || id || sku || `${title}-${index}`;
+      <div className="grid grid-cols-2 gap-3 p-6">
+        <div className="h-14 rounded-full bg-black/10" />
+        <div className="h-14 rounded-full bg-black/10" />
+      </div>
+    </div>
+  );
 }
 
 export default function SaleProducts({
@@ -191,24 +202,19 @@ export default function SaleProducts({
   setting,
   products,
   loading,
-  copy,
 }: Props) {
   const [previewImage, setPreviewImage] = useState<PreviewImage | null>(null);
 
   const visibleProducts = useMemo(() => {
-    return Array.isArray(products) ? products : [];
+    return [...products]
+      .filter(getProductIsActive)
+      .sort((a, b) => getProductSortOrder(a) - getProductSortOrder(b));
   }, [products]);
 
   const sectionTitle =
-    lang === "uz"
-      ? copy?.productsTitle || "Pozitsiyani tanlang"
-      : copy?.productsTitle || "Выберите позицию";
-
-  const sectionLabel =
-    lang === "uz"
-      ? copy?.productsLabel || "Sotuvdagi mahsulotlar"
-      : copy?.productsLabel || "Товары распродажи";
-
+    lang === "uz" ? "Mahsulotni tanlang" : "Выберите позицию";
+  const sectionKicker =
+    lang === "uz" ? "Sotuvdagi mahsulotlar" : "Товары распродажи";
   const foundText =
     lang === "uz"
       ? `Topildi: ${visibleProducts.length} ta mahsulot`
@@ -219,143 +225,106 @@ export default function SaleProducts({
     lang === "uz" ? "Telegramga yozish" : "Написать в Telegram";
 
   return (
-    <>
-      <section
-        className="relative px-4 pb-20 pt-8 sm:px-6 lg:px-8"
-        id="sale-products"
-      >
-        <div className="mx-auto max-w-7xl">
-          <div className="mb-8 flex flex-col gap-3 sm:mb-10 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="gold-text mb-3 text-xs font-black uppercase tracking-[0.42em]">
-                {sectionLabel}
-              </p>
+    <section id="products" className="relative px-4 pb-16 pt-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-10 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="mb-3 text-xs font-black uppercase tracking-[0.45em] text-[#b9874a]">
+              {sectionKicker}
+            </p>
 
-              <h2 className="max-w-4xl text-5xl font-black tracking-[-0.06em] text-[#111] sm:text-6xl lg:text-7xl">
-                {sectionTitle}
-              </h2>
-            </div>
-
-            <p className="text-sm font-semibold text-[#777]">{foundText}</p>
+            <h2 className="max-w-4xl text-5xl font-black leading-[0.92] tracking-[-0.07em] text-black sm:text-6xl lg:text-7xl">
+              {sectionTitle}
+            </h2>
           </div>
 
-          {loading ? (
-            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-              {Array.from({ length: 6 }).map((_, index) => (
-                <div
-                  key={index}
-                  className="soft-card h-[520px] animate-pulse rounded-[32px]"
-                />
-              ))}
-            </div>
-          ) : visibleProducts.length ? (
-            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-              {visibleProducts.map((product, index) => {
-                const title = getTitle(product, lang);
-                const imageUrl = getProductImage(product);
-                const phone = getPhone(product, setting);
-                const telegram = makeTelegramHref(
-                  getTelegram(product, setting),
-                );
-                const price = getProp(product, "price");
-
-                return (
-                  <article
-                    key={getItemKey(product, index)}
-                    className="product-card soft-card group overflow-hidden rounded-[32px]"
-                    style={{ "--i": index } as React.CSSProperties}
-                  >
-                    <button
-                      type="button"
-                      className="relative block h-[300px] w-full overflow-hidden bg-white text-left sm:h-[315px]"
-                      onClick={() => {
-                        if (imageUrl) {
-                          setPreviewImage({
-                            src: imageUrl,
-                            title,
-                          });
-                        }
-                      }}
-                      aria-label={title}
-                    >
-                      {imageUrl ? (
-                        <Image
-                          src={imageUrl}
-                          alt={title}
-                          fill
-                          sizes="(max-width: 768px) 100vw, 33vw"
-                          className="image-soft object-contain p-3"
-                          priority={index < 3}
-                        />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center bg-[#e5e5e5]">
-                          <span className="text-xs font-black uppercase tracking-[0.35em] text-[#aaa]">
-                            Нет фото
-                          </span>
-                        </div>
-                      )}
-                    </button>
-
-                    <div className="relative z-10 bg-white px-7 pb-7 pt-6 sm:px-8 sm:pb-8">
-                      <h3 className="min-h-[62px] text-2xl font-black leading-[1.08] tracking-[-0.04em] text-[#111]">
-                        {title}
-                      </h3>
-
-                      <div className="mt-5 text-3xl font-black tracking-[-0.04em] text-[#111]">
-                        {formatPrice(price)}
-                      </div>
-
-                      <div className="mt-7 grid grid-cols-2 gap-3">
-                        <a
-                          href={getPhoneHref(phone)}
-                          className="btn-premium flex h-14 items-center justify-center rounded-full bg-[#16b84e] px-4 text-center text-sm font-black text-white shadow-[0_16px_36px_rgba(22,184,78,0.22)]"
-                        >
-                          {callText}
-                        </a>
-
-                        {telegram ? (
-                          <a
-                            href={telegram}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="btn-premium flex h-14 items-center justify-center rounded-full bg-[#1da1d8] px-4 text-center text-sm font-black text-white shadow-[0_16px_36px_rgba(29,161,216,0.18)]"
-                          >
-                            {telegramText}
-                          </a>
-                        ) : (
-                          <a
-                            href={getPhoneHref(phone)}
-                            className="btn-premium flex h-14 items-center justify-center rounded-full bg-[#1da1d8] px-4 text-center text-sm font-black text-white shadow-[0_16px_36px_rgba(29,161,216,0.18)]"
-                          >
-                            {telegramText}
-                          </a>
-                        )}
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="soft-card rounded-[32px] px-8 py-14 text-center">
-              <p className="text-lg font-bold text-[#777]">
-                {lang === "uz"
-                  ? "Hozircha mahsulotlar yo‘q"
-                  : "Пока товаров нет"}
-              </p>
-            </div>
-          )}
+          <p className="text-sm font-semibold text-black/55">{foundText}</p>
         </div>
-      </section>
+
+        {loading ? (
+          <div className="grid gap-7 md:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <ProductSkeleton key={index} />
+            ))}
+          </div>
+        ) : visibleProducts.length ? (
+          <div className="grid gap-7 md:grid-cols-2 xl:grid-cols-3">
+            {visibleProducts.map((product, index) => {
+              const title = getProductTitle(product, lang);
+              const image = getProductImage(product);
+              const phone = getProductPhone(product, setting);
+              const telegram = getProductTelegram(product, setting);
+
+              const phoneHref = formatPhoneHref(phone);
+              const telegramHref = normalizeTelegramLink(telegram);
+
+              return (
+                <article
+                  key={`${title}-${index}`}
+                  className="group overflow-hidden rounded-[34px] bg-white shadow-[0_24px_80px_rgba(0,0,0,0.08)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_34px_100px_rgba(0,0,0,0.12)]"
+                >
+                  <button
+                    type="button"
+                    disabled={!image}
+                    onClick={() => {
+                      if (!image) return;
+                      setPreviewImage({ src: image, title });
+                    }}
+                    className="relative flex h-[340px] w-full items-center justify-center overflow-hidden bg-white sm:h-[380px]"
+                    aria-label={title}
+                  >
+                    {image ? (
+                      <img
+                        src={image}
+                        alt={title}
+                        className="h-full w-full object-contain p-4 transition duration-300 group-hover:scale-[1.025]"
+                        loading={index < 6 ? "eager" : "lazy"}
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center bg-[#eeeeef] text-xs font-black uppercase tracking-[0.45em] text-black/25">
+                        Нет фото
+                      </div>
+                    )}
+                  </button>
+
+                  <div className="grid grid-cols-2 gap-3 p-5 sm:p-6">
+                    <a
+                      href={phoneHref || "#"}
+                      className="flex h-14 items-center justify-center rounded-full bg-[#12b84f] px-4 text-center text-sm font-black text-white shadow-[0_18px_45px_rgba(18,184,79,0.22)] transition hover:scale-[1.02] hover:bg-[#0fa846]"
+                    >
+                      {callText}
+                    </a>
+
+                    <a
+                      href={telegramHref || "#"}
+                      target={telegramHref ? "_blank" : undefined}
+                      rel={telegramHref ? "noreferrer" : undefined}
+                      className="flex h-14 items-center justify-center rounded-full bg-[#1da1d8] px-4 text-center text-sm font-black text-white shadow-[0_18px_45px_rgba(29,161,216,0.22)] transition hover:scale-[1.02] hover:bg-[#168fc1]"
+                    >
+                      {telegramText}
+                    </a>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="rounded-[34px] bg-white p-10 text-center shadow-[0_24px_80px_rgba(0,0,0,0.08)]">
+            <p className="text-lg font-black text-black">
+              {lang === "uz" ? "Hozircha mahsulotlar yo‘q" : "Пока нет товаров"}
+            </p>
+          </div>
+        )}
+      </div>
 
       {previewImage ? (
         <div
-          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4"
           onClick={() => setPreviewImage(null)}
         >
           <button
             type="button"
-            className="absolute right-4 top-4 z-[130] flex h-11 w-11 items-center justify-center rounded-full bg-white text-2xl font-black text-black shadow-xl"
+            className="absolute right-4 top-4 z-[101] flex h-12 w-12 items-center justify-center rounded-full bg-white text-2xl font-black text-black shadow-2xl transition hover:scale-105"
             onClick={(event) => {
               event.stopPropagation();
               setPreviewImage(null);
@@ -366,20 +335,17 @@ export default function SaleProducts({
           </button>
 
           <div
-            className="relative h-[86vh] w-full max-w-6xl overflow-hidden rounded-[28px] bg-white"
+            className="relative max-h-[92vh] w-full max-w-6xl overflow-hidden rounded-[28px] bg-white p-3 shadow-2xl"
             onClick={(event) => event.stopPropagation()}
           >
-            <Image
+            <img
               src={previewImage.src}
               alt={previewImage.title}
-              fill
-              sizes="100vw"
-              className="object-contain p-3 sm:p-6"
-              priority
+              className="max-h-[88vh] w-full object-contain"
             />
           </div>
         </div>
       ) : null}
-    </>
+    </section>
   );
 }
