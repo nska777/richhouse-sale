@@ -1,6 +1,8 @@
 "use client";
 
+import Image from "next/image";
 import { useMemo, useState } from "react";
+
 import type { Lang, SaleProduct, SaleSetting } from "./sale-types";
 import { STRAPI_URL } from "./sale-utils";
 
@@ -9,190 +11,179 @@ type Props = {
   setting: SaleSetting | null;
   products: SaleProduct[];
   loading: boolean;
-  copy?: Record<string, string>;
+  copy: Record<string, string>;
 };
 
-type PreviewImage = {
-  src: string;
-  title: string;
+type MediaLike = {
+  url?: unknown;
+  name?: unknown;
+  formats?: {
+    thumbnail?: { url?: unknown };
+    small?: { url?: unknown };
+    medium?: { url?: unknown };
+    large?: { url?: unknown };
+  };
+  data?: {
+    attributes?: MediaLike;
+  };
+  attributes?: MediaLike;
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function getValue(obj: unknown, key: string): unknown {
-  if (!isRecord(obj)) return undefined;
-  return obj[key];
-}
-
-function toText(value: unknown): string {
+function textValue(value: unknown): string {
   if (typeof value === "string") return value.trim();
   if (typeof value === "number") return String(value);
-  if (typeof value === "boolean") return value ? "true" : "false";
   return "";
 }
 
-function toNumber(value: unknown): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
+function getField(product: SaleProduct, key: string): unknown {
+  const record = product as unknown as Record<string, unknown>;
+  const attrs = record.attributes as Record<string, unknown> | undefined;
 
-  if (typeof value === "string") {
-    const normalized = value.replace(/\s/g, "").replace(",", ".");
-    const num = Number(normalized);
-    return Number.isFinite(num) ? num : 0;
-  }
+  if (record[key] !== undefined && record[key] !== null) return record[key];
+  if (attrs && attrs[key] !== undefined && attrs[key] !== null)
+    return attrs[key];
 
-  return 0;
+  return undefined;
 }
 
-function formatPhoneHref(phone: string) {
-  const digits = phone.replace(/[^\d+]/g, "");
+function normalizeMedia(media: unknown): MediaLike | null {
+  if (!media || typeof media !== "object") return null;
 
-  if (!digits) return "";
+  const item = media as MediaLike;
 
-  if (digits.startsWith("+")) {
-    return `tel:${digits}`;
-  }
+  if (item.data?.attributes) return item.data.attributes;
+  if (item.attributes) return item.attributes;
 
-  return `tel:+${digits.replace(/[^\d]/g, "")}`;
+  return item;
 }
 
-function normalizeTelegramLink(value: string) {
-  const raw = value.trim();
+function absoluteImageUrl(url: string): string {
+  if (!url) return "";
+  if (url.startsWith("http://") || url.startsWith("https://")) return url;
+
+  const base = STRAPI_URL.replace(/\/$/, "");
+  const path = url.startsWith("/") ? url : `/${url}`;
+
+  return `${base}${path}`;
+}
+
+function getImageUrl(product: SaleProduct): string {
+  const directImage = getField(product, "image");
+  const media = normalizeMedia(directImage);
+
+  const large = textValue(media?.formats?.large?.url);
+  const medium = textValue(media?.formats?.medium?.url);
+  const small = textValue(media?.formats?.small?.url);
+  const original = textValue(media?.url);
+
+  return absoluteImageUrl(large || medium || small || original);
+}
+
+function getTitle(product: SaleProduct, lang: Lang): string {
+  const titleUz = textValue(getField(product, "title_uz"));
+  const titleRu = textValue(getField(product, "title"));
+
+  if (lang === "uz" && titleUz) return titleUz;
+
+  return titleRu || titleUz || "Товар RichHouse";
+}
+
+function getPrice(product: SaleProduct): number {
+  const value = getField(product, "price");
+
+  if (typeof value === "number") return value;
+
+  const cleaned = String(value ?? "")
+    .replace(/\s/g, "")
+    .replace(/[^\d.-]/g, "");
+
+  const number = Number(cleaned);
+
+  return Number.isFinite(number) ? number : 0;
+}
+
+function formatPrice(value: unknown): string {
+  const number =
+    typeof value === "number"
+      ? value
+      : Number(
+          String(value ?? "")
+            .replace(/\s/g, "")
+            .replace(/[^\d.-]/g, ""),
+        );
+
+  if (!Number.isFinite(number) || number <= 0) return "Цена по запросу";
+
+  return `${new Intl.NumberFormat("ru-RU", {
+    maximumFractionDigits: 0,
+  }).format(number)} UZS`;
+}
+
+function normalizePhone(value: unknown): string {
+  const raw = textValue(value);
 
   if (!raw) return "";
 
-  if (raw.startsWith("http://") || raw.startsWith("https://")) {
-    return raw;
-  }
+  const plus = raw.trim().startsWith("+") ? "+" : "";
+  const digits = raw.replace(/\D/g, "");
 
-  if (raw.startsWith("@")) {
-    return `https://t.me/${raw.slice(1)}`;
-  }
+  return `${plus}${digits}`;
+}
+
+function phoneHref(value: unknown): string {
+  const phone = normalizePhone(value);
+  return phone ? `tel:${phone}` : "#";
+}
+
+function telegramHref(value: unknown): string {
+  const raw = textValue(value);
+
+  if (!raw) return "#";
+  if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
+  if (raw.startsWith("@")) return `https://t.me/${raw.slice(1)}`;
 
   return `https://t.me/${raw}`;
 }
 
-function resolveMediaUrl(value: unknown): string {
-  if (!value) return "";
-
-  if (typeof value === "string") {
-    if (!value.trim()) return "";
-    if (value.startsWith("http://") || value.startsWith("https://")) {
-      return value;
-    }
-    if (value.startsWith("/")) {
-      return `${STRAPI_URL}${value}`;
-    }
-    return value;
-  }
-
-  if (Array.isArray(value)) {
-    return resolveMediaUrl(value[0]);
-  }
-
-  if (!isRecord(value)) return "";
-
-  const directUrl = toText(value.url);
-  if (directUrl) return resolveMediaUrl(directUrl);
-
-  const data = value.data;
-  if (Array.isArray(data)) return resolveMediaUrl(data[0]);
-  if (data) return resolveMediaUrl(data);
-
-  const attributes = value.attributes;
-  if (attributes) return resolveMediaUrl(attributes);
-
-  const formats = value.formats;
-  if (isRecord(formats)) {
-    const large = resolveMediaUrl(formats.large);
-    if (large) return large;
-
-    const medium = resolveMediaUrl(formats.medium);
-    if (medium) return medium;
-
-    const small = resolveMediaUrl(formats.small);
-    if (small) return small;
-  }
-
-  return "";
-}
-
-function getProductImage(product: SaleProduct): string {
-  const directImage = resolveMediaUrl(getValue(product, "image"));
-  if (directImage) return directImage;
-
-  const attributes = getValue(product, "attributes");
-  const attrImage = resolveMediaUrl(getValue(attributes, "image"));
-  if (attrImage) return attrImage;
-
-  return "";
-}
-
-function getProductTitle(product: SaleProduct, lang: Lang): string {
-  const attributes = getValue(product, "attributes");
-  const source = isRecord(attributes) ? attributes : product;
-
-  const titleUz = toText(getValue(source, "title_uz"));
-  const titleRu = toText(getValue(source, "title"));
-  const sku = toText(getValue(source, "sku"));
-
-  if (lang === "uz" && titleUz) return titleUz;
-  if (titleRu) return titleRu;
-  if (titleUz) return titleUz;
-  if (sku) return sku;
-
-  return "Товар RichHouse";
-}
-
-function getProductSortOrder(product: SaleProduct) {
-  const attributes = getValue(product, "attributes");
-  const source = isRecord(attributes) ? attributes : product;
-
-  const sortOrder = toNumber(getValue(source, "sortOrder"));
-  return sortOrder || 9999;
-}
-
-function getProductIsActive(product: SaleProduct) {
-  const attributes = getValue(product, "attributes");
-  const source = isRecord(attributes) ? attributes : product;
-
-  return getValue(source, "isActive") !== false;
-}
-
-function getProductPhone(product: SaleProduct, setting: SaleSetting | null) {
-  const attributes = getValue(product, "attributes");
-  const source = isRecord(attributes) ? attributes : product;
-
+function getProductPhone(
+  product: SaleProduct,
+  setting: SaleSetting | null,
+): string {
   return (
-    toText(getValue(source, "phone")) ||
-    toText(getValue(setting, "phone")) ||
-    "+998 90 925 60 06"
+    textValue(getField(product, "phone")) ||
+    textValue((setting as unknown as Record<string, unknown> | null)?.phone) ||
+    "+998909256006"
   );
 }
 
-function getProductTelegram(product: SaleProduct, setting: SaleSetting | null) {
-  const attributes = getValue(product, "attributes");
-  const source = isRecord(attributes) ? attributes : product;
-
+function getProductTelegram(
+  product: SaleProduct,
+  setting: SaleSetting | null,
+): string {
   return (
-    toText(getValue(source, "telegram")) ||
-    toText(getValue(setting, "telegram")) ||
-    ""
+    textValue(getField(product, "telegram")) ||
+    textValue((setting as unknown as Record<string, unknown> | null)?.telegram)
   );
 }
 
-function ProductSkeleton() {
+function getSortOrder(product: SaleProduct): number {
+  const value = getField(product, "sortOrder");
+  const number = Number(value);
+
+  return Number.isFinite(number) ? number : 9999;
+}
+
+function isActive(product: SaleProduct): boolean {
+  const value = getField(product, "isActive");
+  return value !== false;
+}
+
+function ImagePlaceholder() {
   return (
-    <div className="overflow-hidden rounded-[34px] bg-white shadow-[0_24px_80px_rgba(0,0,0,0.08)]">
-      <div className="flex h-[340px] items-center justify-center bg-[#eeeeef] text-xs font-black uppercase tracking-[0.45em] text-black/25 sm:h-[380px]">
+    <div className="flex h-full w-full items-center justify-center bg-[#ececec]">
+      <span className="text-[13px] font-black uppercase tracking-[0.34em] text-[#a5a5a5]">
         Нет фото
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 p-6">
-        <div className="h-14 rounded-full bg-black/10" />
-        <div className="h-14 rounded-full bg-black/10" />
-      </div>
+      </span>
     </div>
   );
 }
@@ -202,129 +193,155 @@ export default function SaleProducts({
   setting,
   products,
   loading,
+  copy,
 }: Props) {
-  const [previewImage, setPreviewImage] = useState<PreviewImage | null>(null);
+  const [previewImage, setPreviewImage] = useState<{
+    src: string;
+    title: string;
+  } | null>(null);
 
   const visibleProducts = useMemo(() => {
     return [...products]
-      .filter(getProductIsActive)
-      .sort((a, b) => getProductSortOrder(a) - getProductSortOrder(b));
+      .filter(isActive)
+      .sort((a, b) => getSortOrder(a) - getSortOrder(b));
   }, [products]);
 
-  const sectionTitle =
-    lang === "uz" ? "Mahsulotni tanlang" : "Выберите позицию";
-  const sectionKicker =
-    lang === "uz" ? "Sotuvdagi mahsulotlar" : "Товары распродажи";
-  const foundText =
-    lang === "uz"
-      ? `Topildi: ${visibleProducts.length} ta mahsulot`
-      : `Найдено: ${visibleProducts.length} товаров`;
-
-  const callText = lang === "uz" ? "Qo‘ng‘iroq qilish" : "Позвонить";
-  const telegramText =
-    lang === "uz" ? "Telegramga yozish" : "Написать в Telegram";
+  const callText = copy.call || "Позвонить";
+  const telegramText = copy.telegram || "Написать в Telegram";
 
   return (
-    <section id="products" className="relative px-4 pb-16 pt-8 sm:px-6 lg:px-8">
+    <section
+      id="products"
+      className="relative px-4 pb-16 pt-10 sm:px-6 sm:pb-20 lg:px-8"
+    >
       <div className="mx-auto max-w-7xl">
-        <div className="mb-10 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div className="mb-8 flex flex-col gap-3 sm:mb-10 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="mb-3 text-xs font-black uppercase tracking-[0.45em] text-[#b9874a]">
-              {sectionKicker}
+            <p className="mb-3 text-[12px] font-black uppercase tracking-[0.52em] text-[#b38b44]">
+              {lang === "uz" ? "Sotuvdagi mahsulotlar" : "Товары распродажи"}
             </p>
 
-            <h2 className="max-w-4xl text-5xl font-black leading-[0.92] tracking-[-0.07em] text-black sm:text-6xl lg:text-7xl">
-              {sectionTitle}
+            <h2 className="max-w-4xl text-[48px] font-black leading-[0.92] tracking-[-0.075em] text-[#111] sm:text-[68px] lg:text-[82px]">
+              {lang === "uz" ? "Pozitsiyani tanlang" : "Выберите позицию"}
             </h2>
           </div>
 
-          <p className="text-sm font-semibold text-black/55">{foundText}</p>
+          <div className="text-[15px] font-semibold text-[#7b7b7b]">
+            {lang === "uz"
+              ? `Topildi: ${visibleProducts.length} ta mahsulot`
+              : `Найдено: ${visibleProducts.length} товаров`}
+          </div>
         </div>
 
         {loading ? (
-          <div className="grid gap-7 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
             {Array.from({ length: 6 }).map((_, index) => (
-              <ProductSkeleton key={index} />
+              <div
+                key={index}
+                className="h-[520px] animate-pulse rounded-[34px] bg-white/70 shadow-[0_24px_70px_rgba(0,0,0,0.06)]"
+              />
             ))}
           </div>
-        ) : visibleProducts.length ? (
-          <div className="grid gap-7 md:grid-cols-2 xl:grid-cols-3">
+        ) : visibleProducts.length === 0 ? (
+          <div className="rounded-[34px] bg-white p-10 text-center shadow-[0_24px_70px_rgba(0,0,0,0.06)]">
+            <div className="text-[26px] font-black text-[#111]">
+              {lang === "uz" ? "Mahsulotlar yo‘q" : "Товаров пока нет"}
+            </div>
+            <p className="mt-3 text-[16px] text-[#7b7b7b]">
+              {lang === "uz"
+                ? "Keyinroq qayta tekshiring."
+                : "Проверьте позже или обновите список в Excel."}
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
             {visibleProducts.map((product, index) => {
-              const title = getProductTitle(product, lang);
-              const image = getProductImage(product);
+              const title = getTitle(product, lang);
+              const image = getImageUrl(product);
+              const price = getPrice(product);
               const phone = getProductPhone(product, setting);
               const telegram = getProductTelegram(product, setting);
 
-              const phoneHref = formatPhoneHref(phone);
-              const telegramHref = normalizeTelegramLink(telegram);
+              const productId =
+                textValue(getField(product, "documentId")) ||
+                textValue(getField(product, "id")) ||
+                `${title}-${index}`;
 
               return (
                 <article
-                  key={`${title}-${index}`}
-                  className="group overflow-hidden rounded-[34px] bg-white shadow-[0_24px_80px_rgba(0,0,0,0.08)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_34px_100px_rgba(0,0,0,0.12)]"
+                  key={productId}
+                  className="group overflow-hidden rounded-[34px] bg-white shadow-[0_24px_70px_rgba(0,0,0,0.07)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_34px_90px_rgba(0,0,0,0.12)]"
                 >
                   <button
                     type="button"
                     disabled={!image}
                     onClick={() => {
-                      if (!image) return;
-                      setPreviewImage({ src: image, title });
+                      if (image) {
+                        setPreviewImage({
+                          src: image,
+                          title,
+                        });
+                      }
                     }}
-                    className="relative flex h-[340px] w-full items-center justify-center overflow-hidden bg-white sm:h-[380px]"
+                    className="relative block h-[300px] w-full overflow-hidden bg-white text-left sm:h-[320px]"
                     aria-label={title}
                   >
                     {image ? (
-                      <img
+                      <Image
                         src={image}
                         alt={title}
-                        className="h-full w-full object-contain p-4 transition duration-300 group-hover:scale-[1.025]"
-                        loading={index < 6 ? "eager" : "lazy"}
+                        fill
+                        sizes="(max-width: 768px) 100vw, (max-width: 1280px) 50vw, 33vw"
+                        className="object-contain p-5 transition duration-500 group-hover:scale-[1.025]"
+                        priority={index < 6}
                       />
                     ) : (
-                      <div className="flex h-full w-full items-center justify-center bg-[#eeeeef] text-xs font-black uppercase tracking-[0.45em] text-black/25">
-                        Нет фото
-                      </div>
+                      <ImagePlaceholder />
                     )}
                   </button>
 
-                  <div className="grid grid-cols-2 gap-3 p-5 sm:p-6">
-                    <a
-                      href={phoneHref || "#"}
-                      className="flex h-14 items-center justify-center rounded-full bg-[#12b84f] px-4 text-center text-sm font-black text-white shadow-[0_18px_45px_rgba(18,184,79,0.22)] transition hover:scale-[1.02] hover:bg-[#0fa846]"
-                    >
-                      {callText}
-                    </a>
+                  <div className="flex flex-1 flex-col px-6 pb-6 pt-5 sm:px-7 sm:pb-7">
+                    <h3 className="line-clamp-2 min-h-[54px] text-[22px] font-black leading-[1.12] tracking-[-0.04em] text-[#111] sm:text-[24px]">
+                      {title}
+                    </h3>
 
-                    <a
-                      href={telegramHref || "#"}
-                      target={telegramHref ? "_blank" : undefined}
-                      rel={telegramHref ? "noreferrer" : undefined}
-                      className="flex h-14 items-center justify-center rounded-full bg-[#1da1d8] px-4 text-center text-sm font-black text-white shadow-[0_18px_45px_rgba(29,161,216,0.22)] transition hover:scale-[1.02] hover:bg-[#168fc1]"
-                    >
-                      {telegramText}
-                    </a>
+                    <div className="mt-4 text-[28px] font-black leading-none tracking-[-0.04em] text-[#111] sm:text-[31px]">
+                      {formatPrice(price)}
+                    </div>
+
+                    <div className="mt-6 grid grid-cols-2 gap-3">
+                      <a
+                        href={phoneHref(phone)}
+                        className="flex h-14 items-center justify-center rounded-full bg-[#18b94f] px-4 text-center text-[15px] font-black text-white shadow-[0_18px_34px_rgba(24,185,79,0.22)] transition hover:bg-[#12a944]"
+                      >
+                        {callText}
+                      </a>
+
+                      <a
+                        href={telegramHref(telegram)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex h-14 items-center justify-center rounded-full bg-[#20a8e0] px-4 text-center text-[15px] font-black text-white shadow-[0_18px_34px_rgba(32,168,224,0.22)] transition hover:bg-[#1598cf]"
+                      >
+                        {telegramText}
+                      </a>
+                    </div>
                   </div>
                 </article>
               );
             })}
-          </div>
-        ) : (
-          <div className="rounded-[34px] bg-white p-10 text-center shadow-[0_24px_80px_rgba(0,0,0,0.08)]">
-            <p className="text-lg font-black text-black">
-              {lang === "uz" ? "Hozircha mahsulotlar yo‘q" : "Пока нет товаров"}
-            </p>
           </div>
         )}
       </div>
 
       {previewImage ? (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4"
+          className="fixed inset-0 z-[999] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
           onClick={() => setPreviewImage(null)}
         >
           <button
             type="button"
-            className="absolute right-4 top-4 z-[101] flex h-12 w-12 items-center justify-center rounded-full bg-white text-2xl font-black text-black shadow-2xl transition hover:scale-105"
+            className="absolute right-4 top-4 z-10 flex h-12 w-12 items-center justify-center rounded-full bg-white text-[26px] font-black text-[#111] shadow-[0_20px_60px_rgba(0,0,0,0.25)]"
             onClick={(event) => {
               event.stopPropagation();
               setPreviewImage(null);
@@ -335,13 +352,16 @@ export default function SaleProducts({
           </button>
 
           <div
-            className="relative max-h-[92vh] w-full max-w-6xl overflow-hidden rounded-[28px] bg-white p-3 shadow-2xl"
+            className="relative h-[82vh] w-full max-w-6xl overflow-hidden rounded-[30px] bg-white shadow-[0_30px_100px_rgba(0,0,0,0.35)]"
             onClick={(event) => event.stopPropagation()}
           >
-            <img
+            <Image
               src={previewImage.src}
               alt={previewImage.title}
-              className="max-h-[88vh] w-full object-contain"
+              fill
+              sizes="100vw"
+              className="object-contain p-4 sm:p-8"
+              priority
             />
           </div>
         </div>
