@@ -88,37 +88,6 @@ function getTitle(product: SaleProduct, lang: Lang): string {
   return titleRu || titleUz || "Товар RichHouse";
 }
 
-function getPrice(product: SaleProduct): number {
-  const value = getField(product, "price");
-
-  if (typeof value === "number") return value;
-
-  const cleaned = String(value ?? "")
-    .replace(/\s/g, "")
-    .replace(/[^\d.-]/g, "");
-
-  const number = Number(cleaned);
-
-  return Number.isFinite(number) ? number : 0;
-}
-
-function formatPrice(value: unknown): string {
-  const number =
-    typeof value === "number"
-      ? value
-      : Number(
-          String(value ?? "")
-            .replace(/\s/g, "")
-            .replace(/[^\d.-]/g, ""),
-        );
-
-  if (!Number.isFinite(number) || number <= 0) return "Цена по запросу";
-
-  return `${new Intl.NumberFormat("ru-RU", {
-    maximumFractionDigits: 0,
-  }).format(number)} UZS`;
-}
-
 function normalizePhone(value: unknown): string {
   const raw = textValue(value);
 
@@ -238,7 +207,7 @@ export default function SaleProducts({
             {Array.from({ length: 6 }).map((_, index) => (
               <div
                 key={index}
-                className="h-[520px] animate-pulse rounded-[34px] bg-white/70 shadow-[0_24px_70px_rgba(0,0,0,0.06)]"
+                className="h-[410px] animate-pulse rounded-[34px] bg-white/70 shadow-[0_24px_70px_rgba(0,0,0,0.06)]"
               />
             ))}
           </div>
@@ -258,7 +227,6 @@ export default function SaleProducts({
             {visibleProducts.map((product, index) => {
               const title = getTitle(product, lang);
               const image = getImageUrl(product);
-              const price = getPrice(product);
               const phone = getProductPhone(product, setting);
               const telegram = getProductTelegram(product, setting);
 
@@ -283,7 +251,7 @@ export default function SaleProducts({
                         });
                       }
                     }}
-                    className="relative block h-[300px] w-full overflow-hidden bg-white text-left sm:h-[320px]"
+                    className="relative block h-[330px] w-full overflow-hidden bg-white text-left sm:h-[350px]"
                     aria-label={title}
                   >
                     {image ? (
@@ -292,7 +260,7 @@ export default function SaleProducts({
                         alt={title}
                         fill
                         sizes="(max-width: 768px) 100vw, (max-width: 1280px) 50vw, 33vw"
-                        className="object-contain p-5 transition duration-500 group-hover:scale-[1.025]"
+                        className="object-contain p-4 transition duration-500 group-hover:scale-[1.025]"
                         priority={index < 6}
                       />
                     ) : (
@@ -300,32 +268,22 @@ export default function SaleProducts({
                     )}
                   </button>
 
-                  <div className="flex flex-1 flex-col px-6 pb-6 pt-5 sm:px-7 sm:pb-7">
-                    <h3 className="line-clamp-2 min-h-[54px] text-[22px] font-black leading-[1.12] tracking-[-0.04em] text-[#111] sm:text-[24px]">
-                      {title}
-                    </h3>
+                  <div className="grid grid-cols-2 gap-3 px-6 pb-6 pt-4 sm:px-7 sm:pb-7">
+                    <a
+                      href={phoneHref(phone)}
+                      className="flex h-14 items-center justify-center rounded-full bg-[#18b94f] px-4 text-center text-[15px] font-black text-white shadow-[0_18px_34px_rgba(24,185,79,0.22)] transition hover:bg-[#12a944]"
+                    >
+                      {callText}
+                    </a>
 
-                    <div className="mt-4 text-[28px] font-black leading-none tracking-[-0.04em] text-[#111] sm:text-[31px]">
-                      {formatPrice(price)}
-                    </div>
-
-                    <div className="mt-6 grid grid-cols-2 gap-3">
-                      <a
-                        href={phoneHref(phone)}
-                        className="flex h-14 items-center justify-center rounded-full bg-[#18b94f] px-4 text-center text-[15px] font-black text-white shadow-[0_18px_34px_rgba(24,185,79,0.22)] transition hover:bg-[#12a944]"
-                      >
-                        {callText}
-                      </a>
-
-                      <a
-                        href={telegramHref(telegram)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex h-14 items-center justify-center rounded-full bg-[#20a8e0] px-4 text-center text-[15px] font-black text-white shadow-[0_18px_34px_rgba(32,168,224,0.22)] transition hover:bg-[#1598cf]"
-                      >
-                        {telegramText}
-                      </a>
-                    </div>
+                    <a
+                      href={telegramHref(telegram)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex h-14 items-center justify-center rounded-full bg-[#20a8e0] px-4 text-center text-[15px] font-black text-white shadow-[0_18px_34px_rgba(32,168,224,0.22)] transition hover:bg-[#1598cf]"
+                    >
+                      {telegramText}
+                    </a>
                   </div>
                 </article>
               );
