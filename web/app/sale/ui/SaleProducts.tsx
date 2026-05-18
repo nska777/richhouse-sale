@@ -169,6 +169,23 @@ function isActive(product: SaleProduct): boolean {
   return value !== false;
 }
 
+function isPromoCard(product: SaleProduct): boolean {
+  const sortOrder = getSortOrder(product);
+  return sortOrder >= 0 && sortOrder <= 6;
+}
+
+function formatPrice(value: unknown): string {
+  const raw = textValue(value);
+  const normalized = raw.replace(/\s/g, "").replace(",", ".");
+  const number = Number(normalized);
+
+  if (!Number.isFinite(number) || number <= 0) return "";
+
+  return new Intl.NumberFormat("ru-RU", {
+    maximumFractionDigits: 0,
+  }).format(number);
+}
+
 function ImagePlaceholder() {
   return (
     <div className="flex h-full w-full items-center justify-center bg-[#ececec]">
@@ -252,6 +269,9 @@ export default function SaleProducts({
               const image = getImageUrl(product);
               const phone = getProductPhone(product, setting);
               const telegram = getProductTelegram(product, setting);
+              const promoPrice = isPromoCard(product)
+                ? formatPrice(getField(product, "price"))
+                : "";
 
               const productId =
                 textValue(getField(product, "documentId")) ||
@@ -292,7 +312,20 @@ export default function SaleProducts({
                     )}
                   </button>
 
-                  <div className="grid grid-cols-2 gap-3 px-6 pb-6 pt-4 sm:px-7 sm:pb-7">
+                  {promoPrice ? (
+                    <div className="px-6 pt-4 text-center sm:px-7">
+                      <div className="text-[26px] font-black tracking-[0.03em] text-[#a40f1a]">
+                        {promoPrice}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div
+                    className={[
+                      "grid grid-cols-2 gap-3 px-6 pb-6 sm:px-7 sm:pb-7",
+                      promoPrice ? "pt-3" : "pt-4",
+                    ].join(" ")}
+                  >
                     <a
                       href={phoneHref(phone)}
                       className="flex h-14 items-center justify-center rounded-full bg-[#18b94f] px-4 text-center text-[15px] font-black text-white shadow-[0_18px_34px_rgba(24,185,79,0.22)] transition hover:bg-[#12a944]"
