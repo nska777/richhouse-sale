@@ -44,6 +44,7 @@ function getField(product: SaleProduct, key: string): unknown {
   const attrs = record.attributes as Record<string, unknown> | undefined;
 
   if (record[key] !== undefined && record[key] !== null) return record[key];
+
   if (attrs && attrs[key] !== undefined && attrs[key] !== null) {
     return attrs[key];
   }
@@ -89,13 +90,15 @@ function getImageUrl(product: SaleProduct): string {
   const directImage = getField(product, "image");
   const media = normalizeMedia(directImage);
 
-  const large = textValue(media?.formats?.large?.url);
+  // Важно: сначала берем formatted images, потому что у Сонаты original /uploads/2.jpg может не работать,
+  // а /uploads/medium_2_ab434c70f0.jpg открывается нормально.
   const medium = textValue(media?.formats?.medium?.url);
+  const large = textValue(media?.formats?.large?.url);
   const small = textValue(media?.formats?.small?.url);
   const thumbnail = textValue(media?.formats?.thumbnail?.url);
   const original = textValue(media?.url);
 
-  return absoluteImageUrl(large || medium || small || thumbnail || original);
+  return absoluteImageUrl(medium || large || small || thumbnail || original);
 }
 
 function getTitle(product: SaleProduct, lang: Lang): string {
@@ -195,7 +198,7 @@ export default function SaleProducts({
   }, [products]);
 
   const callText = copy.call || "Позвонить";
-  const telegramText = copy.telegram || "Написать в Telegram";
+  const telegramText = copy.telegram || "Telegram";
 
   return (
     <section
@@ -235,6 +238,7 @@ export default function SaleProducts({
             <div className="text-[26px] font-black text-[#111]">
               {lang === "uz" ? "Mahsulotlar yo‘q" : "Товаров пока нет"}
             </div>
+
             <p className="mt-3 text-[16px] text-[#7b7b7b]">
               {lang === "uz"
                 ? "Keyinroq qayta tekshiring."
