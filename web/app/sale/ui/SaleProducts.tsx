@@ -43,7 +43,9 @@ function getField(product: SaleProduct, key: string): unknown {
   const record = product as unknown as Record<string, unknown>;
   const attrs = record.attributes as Record<string, unknown> | undefined;
 
-  if (record[key] !== undefined && record[key] !== null) return record[key];
+  if (record[key] !== undefined && record[key] !== null) {
+    return record[key];
+  }
 
   if (attrs && attrs[key] !== undefined && attrs[key] !== null) {
     return attrs[key];
@@ -90,8 +92,6 @@ function getImageUrl(product: SaleProduct): string {
   const directImage = getField(product, "image");
   const media = normalizeMedia(directImage);
 
-  // Важно: сначала берем formatted images, потому что у Сонаты original /uploads/2.jpg может не работать,
-  // а /uploads/medium_2_ab434c70f0.jpg открывается нормально.
   const medium = textValue(media?.formats?.medium?.url);
   const large = textValue(media?.formats?.large?.url);
   const small = textValue(media?.formats?.small?.url);
@@ -285,6 +285,7 @@ export default function SaleProducts({
                         sizes="(max-width: 768px) 100vw, (max-width: 1280px) 50vw, 33vw"
                         className="object-contain p-4 transition duration-500 group-hover:scale-[1.025]"
                         priority={index < 6}
+                        unoptimized
                       />
                     ) : (
                       <ImagePlaceholder />
@@ -343,6 +344,7 @@ export default function SaleProducts({
               sizes="100vw"
               className="object-contain p-4 sm:p-8"
               priority
+              unoptimized
             />
           </div>
         </div>
