@@ -244,7 +244,7 @@ export default function SaleHero({ lang, setLang, setting }: Props) {
           <div className="relative">
             <div className="absolute inset-0 translate-y-8 rounded-[42px] bg-black/10 blur-3xl" />
 
-            <div className="relative mx-auto aspect-square w-full max-w-[680px] overflow-hidden rounded-[34px] border-[10px] border-white bg-white shadow-[0_34px_100px_rgba(0,0,0,0.16)]">
+            <div className="relative mx-auto aspect-square w-full max-w-[560px] overflow-hidden rounded-[34px] border-[10px] border-white bg-white shadow-[0_34px_100px_rgba(0,0,0,0.16)] lg:max-w-[620px]">
               {banner ? (
                 <Image
                   src={banner}
@@ -252,8 +252,8 @@ export default function SaleHero({ lang, setLang, setting }: Props) {
                   fill
                   priority
                   unoptimized
-                  sizes="(max-width: 1024px) 100vw, 680px"
-                  className="object-contain"
+                  sizes="(max-width: 1024px) 100vw, 620px"
+                  className="object-cover object-center"
                 />
               ) : (
                 <div className="flex h-full w-full items-center justify-center bg-white px-8 text-center">
