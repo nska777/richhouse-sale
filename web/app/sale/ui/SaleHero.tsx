@@ -62,6 +62,10 @@ function normalizeMedia(media: unknown): MediaLike | null {
     };
   }
 
+  if (Array.isArray(media)) {
+    return normalizeMedia(media[0]);
+  }
+
   if (typeof media !== "object") return null;
 
   const item = media as MediaLike;
@@ -108,13 +112,34 @@ function getDisplayPhone(): string {
 }
 
 function getBanner(setting: SaleSetting | null): string {
-  const banner =
+  const direct =
     getField(setting, "banner") ||
+    getField(setting, "bannerImage") ||
+    getField(setting, "heroBanner") ||
     getField(setting, "heroImage") ||
+    getField(setting, "mainBanner") ||
+    getField(setting, "desktopBanner") ||
     getField(setting, "image") ||
-    getField(setting, "cover");
+    getField(setting, "cover") ||
+    getField(setting, "photo") ||
+    getField(setting, "file");
 
-  return getImageUrl(banner);
+  const imageFromDirect = getImageUrl(direct);
+
+  if (imageFromDirect) return imageFromDirect;
+
+  const record = setting as unknown as Record<string, unknown> | null;
+  const attrs = record?.attributes as Record<string, unknown> | undefined;
+  const source = attrs || record;
+
+  if (!source) return "";
+
+  for (const value of Object.values(source)) {
+    const image = getImageUrl(value);
+    if (image) return image;
+  }
+
+  return "";
 }
 
 function getTitle(setting: SaleSetting | null, lang: Lang): string {
@@ -141,9 +166,9 @@ function getSubtitle(setting: SaleSetting | null, lang: Lang): string {
       : subtitleRu || subtitleUz || fallback;
 
   return value
-    .replace("50%", "65%")
-    .replace("50 %", "65%")
-    .replace("50 foiz", "65 foiz");
+    .replaceAll("50%", "65%")
+    .replaceAll("50 %", "65%")
+    .replaceAll("50 foiz", "65 foiz");
 }
 
 export default function SaleHero({ lang, setLang, setting }: Props) {
