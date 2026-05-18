@@ -331,14 +331,24 @@ export default function SaleProducts({
                     <div className="px-6 pt-4 text-center sm:px-7">
                       {promoPrices.oldPrice ? (
                         <div className="mb-1 flex items-center justify-center">
-                          <span className="relative inline-block text-[18px] font-black tracking-[0.02em] text-[#9a9a9a]">
+                          <span
+                            className="relative inline-block text-[20px] font-bold tracking-[0.02em] text-[#9a9a9a]"
+                            style={{
+                              fontFamily: "Georgia, 'Times New Roman', serif",
+                            }}
+                          >
                             {promoPrices.oldPrice}
-                            <span className="absolute left-[-6%] top-1/2 h-[3px] w-[112%] -translate-y-1/2 -rotate-3 rounded-full bg-[#a40f1a]" />
+                            <span className="absolute left-[-6%] top-1/2 h-[3px] w-[112%] -translate-y-1/2 -rotate-3 rounded-full bg-[#d71920]" />
                           </span>
                         </div>
                       ) : null}
 
-                      <div className="text-[30px] font-black tracking-[0.03em] text-[#a40f1a]">
+                      <div
+                        className="text-[32px] font-bold leading-none tracking-[0.03em] text-[#a40f1a]"
+                        style={{
+                          fontFamily: "Georgia, 'Times New Roman', serif",
+                        }}
+                      >
                         {promoPrices.price}
                       </div>
                     </div>
