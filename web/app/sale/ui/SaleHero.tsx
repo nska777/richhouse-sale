@@ -1,15 +1,16 @@
 "use client";
 
 import Image from "next/image";
+
+import type { Dispatch, SetStateAction } from "react";
 import type { Lang, SaleSetting } from "./sale-types";
 import { STRAPI_URL } from "./sale-utils";
 
 type Props = {
   lang: Lang;
+  setLang: Dispatch<SetStateAction<Lang>>;
   setting: SaleSetting | null;
-  copy?: unknown;
-  onLangChange?: (lang: Lang) => void;
-  setLang?: (lang: Lang) => void;
+  copy: Record<string, string>;
 };
 
 type MediaFormat = {
@@ -18,29 +19,18 @@ type MediaFormat = {
 
 type MediaLike = {
   url?: unknown;
+  name?: unknown;
   formats?: {
     thumbnail?: MediaFormat;
     small?: MediaFormat;
     medium?: MediaFormat;
     large?: MediaFormat;
   };
-  data?:
-    | {
-        attributes?: MediaLike;
-      }
-    | {
-        attributes?: MediaLike;
-      }[]
-    | null;
+  data?: {
+    attributes?: MediaLike;
+  } | null;
   attributes?: MediaLike;
 };
-
-const PHONE_DISPLAY = "+998 90 002 12 30";
-const PHONE_HREF = "tel:+998900021230";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
 
 function textValue(value: unknown): string {
   if (typeof value === "string") return value.trim();
@@ -48,22 +38,41 @@ function textValue(value: unknown): string {
   return "";
 }
 
-function getSettingField(setting: SaleSetting | null, key: string): unknown {
-  if (!setting) return "";
+function getField(source: unknown, key: string): unknown {
+  const record = source as Record<string, unknown> | null;
+  const attrs = record?.attributes as Record<string, unknown> | undefined;
 
-  const record = setting as unknown as Record<string, unknown>;
-  const attrs = record.attributes as Record<string, unknown> | undefined;
-
-  if (record[key] !== undefined && record[key] !== null) return record[key];
+  if (record && record[key] !== undefined && record[key] !== null) {
+    return record[key];
+  }
 
   if (attrs && attrs[key] !== undefined && attrs[key] !== null) {
     return attrs[key];
   }
 
-  return "";
+  return undefined;
 }
 
-function absoluteMediaUrl(url: string): string {
+function normalizeMedia(media: unknown): MediaLike | null {
+  if (!media) return null;
+
+  if (typeof media === "string") {
+    return {
+      url: media,
+    };
+  }
+
+  if (typeof media !== "object") return null;
+
+  const item = media as MediaLike;
+
+  if (item.data?.attributes) return item.data.attributes;
+  if (item.attributes) return item.attributes;
+
+  return item;
+}
+
+function absoluteImageUrl(url: string): string {
   const cleanUrl = url.trim();
 
   if (!cleanUrl) return "";
@@ -78,211 +87,139 @@ function absoluteMediaUrl(url: string): string {
   return `${base}${path}`;
 }
 
-function normalizeMedia(media: unknown): MediaLike | null {
-  if (!media) return null;
+function getImageUrl(mediaValue: unknown): string {
+  const media = normalizeMedia(mediaValue);
 
-  if (typeof media === "string") {
-    return {
-      url: media,
-    };
-  }
+  const large = textValue(media?.formats?.large?.url);
+  const medium = textValue(media?.formats?.medium?.url);
+  const small = textValue(media?.formats?.small?.url);
+  const thumbnail = textValue(media?.formats?.thumbnail?.url);
+  const original = textValue(media?.url);
 
-  if (Array.isArray(media)) {
-    return normalizeMedia(media[0]);
-  }
-
-  if (!isRecord(media)) return null;
-
-  const item = media as MediaLike;
-
-  if (Array.isArray(item.data)) {
-    return normalizeMedia(item.data[0]);
-  }
-
-  if (item.data && !Array.isArray(item.data) && item.data.attributes) {
-    return item.data.attributes;
-  }
-
-  if (item.attributes) return item.attributes;
-
-  return item;
+  return absoluteImageUrl(large || medium || small || thumbnail || original);
 }
 
-function getMediaUrl(media: unknown): string {
-  const item = normalizeMedia(media);
-
-  if (!item) return "";
-
-  const medium = textValue(item.formats?.medium?.url);
-  const large = textValue(item.formats?.large?.url);
-  const small = textValue(item.formats?.small?.url);
-  const thumbnail = textValue(item.formats?.thumbnail?.url);
-  const original = textValue(item.url);
-
-  return absoluteMediaUrl(medium || large || small || thumbnail || original);
+function phoneHref(): string {
+  return "tel:+998900021230";
 }
 
-function textByLang(
-  lang: Lang,
-  ru: unknown,
-  uz: unknown,
-  fallback = "",
-): string {
-  const ruText = textValue(ru);
-  const uzText = textValue(uz);
-
-  if (lang === "uz") return uzText || ruText || fallback;
-
-  return ruText || uzText || fallback;
+function getDisplayPhone(): string {
+  return "+998 90 002 12 30";
 }
 
-export default function SaleHero({
-  lang,
-  setting,
-  onLangChange,
-  setLang,
-}: Props) {
-  const changeLang = onLangChange || setLang || (() => {});
-
-  const title = textByLang(
-    lang,
-    getSettingField(setting, "title"),
-    getSettingField(setting, "title_uz"),
-    lang === "uz" ? "Mebelga katta chegirmalar" : "Распродажа мебели",
-  );
-
-  const subtitle = textByLang(
-    lang,
-    getSettingField(setting, "subtitle"),
-    getSettingField(setting, "subtitle_uz"),
-    lang === "uz"
-      ? "Barcha mahsulotlarga 50% gacha chegirmalar. Mahsulotlar soni cheklangan."
-      : "Скидки до 50% на все позиции. Количество ограничено.",
-  );
-
-  const heroBadge = textByLang(
-    lang,
-    getSettingField(setting, "hero_badge_ru"),
-    getSettingField(setting, "hero_badge_uz"),
-    lang === "uz" ? "Cheklangan taklif" : "Лимитированное предложение",
-  );
-
-  const buttonText = textByLang(
-    lang,
-    getSettingField(setting, "buttonText"),
-    getSettingField(setting, "button_text_uz"),
-    lang === "uz" ? "Tanlash" : "Выбрать товары",
-  );
-
+function getBanner(setting: SaleSetting | null): string {
   const banner =
-    getMediaUrl(getSettingField(setting, "bannerImage")) ||
-    getMediaUrl(getSettingField(setting, "banner")) ||
-    getMediaUrl(getSettingField(setting, "heroImage")) ||
-    getMediaUrl(getSettingField(setting, "image"));
+    getField(setting, "banner") ||
+    getField(setting, "heroImage") ||
+    getField(setting, "image") ||
+    getField(setting, "cover");
 
-  const logo = getMediaUrl(getSettingField(setting, "logo"));
+  return getImageUrl(banner);
+}
+
+function getTitle(setting: SaleSetting | null, lang: Lang): string {
+  const titleUz = textValue(getField(setting, "title_uz"));
+  const titleRu = textValue(getField(setting, "title"));
+
+  if (lang === "uz" && titleUz) return titleUz;
+
+  return titleRu || titleUz || "Распродажа мебели";
+}
+
+function getSubtitle(setting: SaleSetting | null, lang: Lang): string {
+  const subtitleUz = textValue(getField(setting, "subtitle_uz"));
+  const subtitleRu = textValue(getField(setting, "subtitle"));
+
+  const fallback =
+    lang === "uz"
+      ? "Barcha pozitsiyalarga 65% gacha chegirmalar. Miqdor cheklangan."
+      : "Скидки до 65% на все позиции. Количество ограничено.";
+
+  const value =
+    lang === "uz" && subtitleUz
+      ? subtitleUz
+      : subtitleRu || subtitleUz || fallback;
+
+  return value
+    .replace("50%", "65%")
+    .replace("50 %", "65%")
+    .replace("50 foiz", "65 foiz");
+}
+
+export default function SaleHero({ lang, setLang, setting }: Props) {
+  const phone = getDisplayPhone();
+  const banner = getBanner(setting);
+  const title = getTitle(setting, lang);
+  const subtitle = getSubtitle(setting, lang);
 
   return (
-    <section className="relative overflow-hidden bg-[#f4f4f2] pb-8 pt-5 sm:pb-12 sm:pt-6 lg:pb-16">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(255,255,255,0.96),transparent_34%),radial-gradient(circle_at_85%_20%,rgba(216,196,158,0.24),transparent_30%),linear-gradient(180deg,#ffffff_0%,#f4f4f2_58%,#eeeeec_100%)]" />
+    <section className="relative overflow-hidden px-4 pb-12 pt-4 sm:px-6 lg:px-8">
+      <div className="pointer-events-none absolute left-[-18%] top-[-28%] h-[520px] w-[520px] rounded-full bg-[#f1e4c8]/60 blur-3xl" />
+      <div className="pointer-events-none absolute bottom-[-22%] right-[-18%] h-[560px] w-[560px] rounded-full bg-[#dfe8dd]/70 blur-3xl" />
 
-      <div className="relative mx-auto w-full max-w-[1440px] px-4 sm:px-6 lg:px-10">
-        <header className="sticky top-3 z-30 mb-10 rounded-[28px] border border-black/5 bg-white/75 px-4 py-3 shadow-[0_18px_60px_rgba(0,0,0,0.08)] backdrop-blur-2xl sm:mb-14 sm:px-6">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex min-w-0 items-center gap-4">
-              {logo ? (
-                <div className="relative h-10 w-[150px] overflow-hidden rounded-2xl bg-white sm:h-12 sm:w-[190px]">
-                  <Image
-                    src={logo}
-                    alt="RichHouse"
-                    fill
-                    priority
-                    unoptimized
-                    sizes="190px"
-                    className="object-contain"
-                  />
-                </div>
-              ) : (
-                <div className="rounded-2xl bg-[#151515] px-7 py-3 text-sm font-black tracking-[0.22em] text-white shadow-lg">
-                  RichHouse
-                </div>
-              )}
-            </div>
+      <div className="relative mx-auto max-w-7xl">
+        <header className="mb-12 flex items-center justify-between rounded-[28px] bg-white/78 px-5 py-3 shadow-[0_24px_80px_rgba(0,0,0,0.08)] backdrop-blur-xl">
+          <div className="flex h-11 items-center justify-center rounded-[18px] bg-[#111] px-7 text-[15px] font-black tracking-[0.18em] text-white">
+            RichHouse
+          </div>
 
-            <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-              <div className="flex rounded-full bg-black/5 p-1">
-                <button
-                  type="button"
-                  onClick={() => changeLang("ru")}
-                  className={[
-                    "h-9 cursor-pointer rounded-full px-4 text-xs font-black transition-all",
-                    lang === "ru"
-                      ? "bg-[#151515] text-white shadow-md"
-                      : "text-black/45 hover:text-black",
-                  ].join(" ")}
-                >
-                  RU
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => changeLang("uz")}
-                  className={[
-                    "h-9 cursor-pointer rounded-full px-4 text-xs font-black transition-all",
-                    lang === "uz"
-                      ? "bg-[#151515] text-white shadow-md"
-                      : "text-black/45 hover:text-black",
-                  ].join(" ")}
-                >
-                  UZ
-                </button>
-              </div>
-
-              <a
-                href={PHONE_HREF}
-                className="hidden rounded-full bg-[#151515] px-5 py-3 text-sm font-black text-white shadow-[0_14px_34px_rgba(0,0,0,0.16)] transition hover:-translate-y-0.5 hover:bg-black sm:block"
+          <div className="flex items-center gap-3">
+            <div className="hidden rounded-full bg-[#f2f2f2] p-1 sm:flex">
+              <button
+                type="button"
+                onClick={() => setLang("ru")}
+                className={`h-9 rounded-full px-4 text-[12px] font-black uppercase transition ${
+                  lang === "ru"
+                    ? "bg-[#111] text-white shadow-[0_12px_28px_rgba(0,0,0,0.18)]"
+                    : "text-[#777] hover:text-[#111]"
+                }`}
               >
-                {PHONE_DISPLAY}
-              </a>
+                RU
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setLang("uz")}
+                className={`h-9 rounded-full px-4 text-[12px] font-black uppercase transition ${
+                  lang === "uz"
+                    ? "bg-[#111] text-white shadow-[0_12px_28px_rgba(0,0,0,0.18)]"
+                    : "text-[#777] hover:text-[#111]"
+                }`}
+              >
+                UZ
+              </button>
             </div>
+
+            <a
+              href={phoneHref()}
+              className="flex h-11 items-center justify-center rounded-[18px] bg-[#111] px-5 text-[14px] font-black tracking-[0.04em] text-white shadow-[0_18px_45px_rgba(0,0,0,0.16)]"
+            >
+              {phone}
+            </a>
           </div>
         </header>
 
         <div className="grid items-center gap-10 lg:grid-cols-[0.95fr_1.05fr] lg:gap-12">
-          <div className="max-w-3xl">
-            <div className="mb-7 inline-flex rounded-full border border-black/5 bg-white/80 px-8 py-3 text-[12px] font-black uppercase tracking-[0.56em] text-[#6f6f6f] shadow-[0_14px_42px_rgba(0,0,0,0.08)]">
-              {heroBadge}
+          <div className="max-w-2xl">
+            <div className="mb-8 inline-flex rounded-full bg-white/82 px-7 py-3 text-[13px] font-black uppercase tracking-[0.5em] text-[#7b7b7b] shadow-[0_18px_50px_rgba(0,0,0,0.07)]">
+              {lang === "uz"
+                ? "Cheklangan taklif"
+                : "Лимитированное предложение"}
             </div>
 
-            <h1 className="max-w-4xl text-[64px] font-black leading-[0.9] tracking-[-0.08em] text-[#111] sm:text-[88px] lg:text-[112px]">
+            <h1 className="text-[64px] font-black leading-[0.92] tracking-[-0.08em] text-[#050505] sm:text-[86px] lg:text-[104px]">
               {title}
             </h1>
 
-            <p className="mt-7 max-w-2xl text-[18px] font-semibold leading-[1.55] text-[#6f6f6f] sm:text-[20px]">
+            <p className="mt-7 max-w-2xl text-[20px] font-bold leading-[1.45] tracking-[-0.035em] text-[#6f7478] sm:text-[22px]">
               {subtitle}
             </p>
-
-            <div className="mt-8 flex flex-wrap items-center gap-3">
-              <a
-                href="#products"
-                className="rounded-full bg-[#151515] px-8 py-4 text-[15px] font-black text-white shadow-[0_18px_44px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:bg-black"
-              >
-                {buttonText}
-              </a>
-
-              <a
-                href={PHONE_HREF}
-                className="rounded-full bg-white px-8 py-4 text-[15px] font-black text-[#151515] shadow-[0_18px_44px_rgba(0,0,0,0.08)] transition hover:-translate-y-0.5"
-              >
-                {PHONE_DISPLAY}
-              </a>
-            </div>
           </div>
 
           <div className="relative">
-            <div className="absolute -inset-6 rounded-[46px] bg-[#d8c49e]/30 blur-3xl" />
+            <div className="absolute inset-0 translate-y-8 rounded-[42px] bg-black/10 blur-3xl" />
 
-            <div className="relative aspect-[1.08/1] overflow-hidden rounded-[42px] border-[10px] border-white bg-[#d6c8a8] shadow-[0_38px_110px_rgba(0,0,0,0.14)]">
+            <div className="relative mx-auto aspect-square w-full max-w-[680px] overflow-hidden rounded-[34px] border-[10px] border-white bg-white shadow-[0_34px_100px_rgba(0,0,0,0.16)]">
               {banner ? (
                 <Image
                   src={banner}
@@ -291,14 +228,15 @@ export default function SaleHero({
                   priority
                   unoptimized
                   sizes="(max-width: 1024px) 100vw, 680px"
-                  className="object-cover"
+                  className="object-contain"
                 />
               ) : (
-                <div className="flex h-full w-full items-center justify-center bg-[#d6c8a8] px-8 text-center">
+                <div className="flex h-full w-full items-center justify-center bg-white px-8 text-center">
                   <div>
                     <div className="text-[13px] font-black uppercase tracking-[0.36em] text-black/35">
                       RichHouse
                     </div>
+
                     <div className="mt-4 text-[38px] font-black leading-none tracking-[-0.04em] text-black/65">
                       Баннер распродажи
                     </div>
