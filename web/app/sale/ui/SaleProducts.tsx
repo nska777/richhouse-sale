@@ -14,18 +14,22 @@ type Props = {
   copy: Record<string, string>;
 };
 
+type MediaFormat = {
+  url?: unknown;
+};
+
 type MediaLike = {
   url?: unknown;
   name?: unknown;
   formats?: {
-    thumbnail?: { url?: unknown };
-    small?: { url?: unknown };
-    medium?: { url?: unknown };
-    large?: { url?: unknown };
+    thumbnail?: MediaFormat;
+    small?: MediaFormat;
+    medium?: MediaFormat;
+    large?: MediaFormat;
   };
   data?: {
     attributes?: MediaLike;
-  };
+  } | null;
   attributes?: MediaLike;
 };
 
@@ -40,14 +44,23 @@ function getField(product: SaleProduct, key: string): unknown {
   const attrs = record.attributes as Record<string, unknown> | undefined;
 
   if (record[key] !== undefined && record[key] !== null) return record[key];
-  if (attrs && attrs[key] !== undefined && attrs[key] !== null)
+  if (attrs && attrs[key] !== undefined && attrs[key] !== null) {
     return attrs[key];
+  }
 
   return undefined;
 }
 
 function normalizeMedia(media: unknown): MediaLike | null {
-  if (!media || typeof media !== "object") return null;
+  if (!media) return null;
+
+  if (typeof media === "string") {
+    return {
+      url: media,
+    };
+  }
+
+  if (typeof media !== "object") return null;
 
   const item = media as MediaLike;
 
@@ -58,11 +71,16 @@ function normalizeMedia(media: unknown): MediaLike | null {
 }
 
 function absoluteImageUrl(url: string): string {
-  if (!url) return "";
-  if (url.startsWith("http://") || url.startsWith("https://")) return url;
+  const cleanUrl = url.trim();
+
+  if (!cleanUrl) return "";
+
+  if (cleanUrl.startsWith("http://") || cleanUrl.startsWith("https://")) {
+    return cleanUrl;
+  }
 
   const base = STRAPI_URL.replace(/\/$/, "");
-  const path = url.startsWith("/") ? url : `/${url}`;
+  const path = cleanUrl.startsWith("/") ? cleanUrl : `/${cleanUrl}`;
 
   return `${base}${path}`;
 }
@@ -74,9 +92,10 @@ function getImageUrl(product: SaleProduct): string {
   const large = textValue(media?.formats?.large?.url);
   const medium = textValue(media?.formats?.medium?.url);
   const small = textValue(media?.formats?.small?.url);
+  const thumbnail = textValue(media?.formats?.thumbnail?.url);
   const original = textValue(media?.url);
 
-  return absoluteImageUrl(large || medium || small || original);
+  return absoluteImageUrl(large || medium || small || thumbnail || original);
 }
 
 function getTitle(product: SaleProduct, lang: Lang): string {
