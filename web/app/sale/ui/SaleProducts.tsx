@@ -39,6 +39,19 @@ function textValue(value: unknown): string {
   return "";
 }
 
+function numberValue(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+
+  if (typeof value === "string") {
+    const cleaned = value.replace(/[^\d.-]/g, "");
+    const parsed = Number(cleaned);
+
+    if (Number.isFinite(parsed)) return parsed;
+  }
+
+  return 0;
+}
+
 function getField(product: SaleProduct, key: string): unknown {
   const record = product as unknown as Record<string, unknown>;
   const attrs = record.attributes as Record<string, unknown> | undefined;
@@ -110,6 +123,22 @@ function getTitle(product: SaleProduct, lang: Lang): string {
   return titleRu || titleUz || "Товар RichHouse";
 }
 
+function getPrice(product: SaleProduct): number {
+  return numberValue(getField(product, "price"));
+}
+
+function getOldPrice(product: SaleProduct): number {
+  return numberValue(getField(product, "oldPrice"));
+}
+
+function formatPrice(value: number): string {
+  if (!value) return "";
+
+  return new Intl.NumberFormat("ru-RU", {
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
 function normalizePhone(value: unknown): string {
   const raw = textValue(value);
 
@@ -164,43 +193,14 @@ function getSortOrder(product: SaleProduct): number {
   return Number.isFinite(number) ? number : 9999;
 }
 
-function isActive(product: SaleProduct): boolean {
-  const value = getField(product, "isActive");
-  return value !== false;
-}
-
-function isPromoCard(product: SaleProduct): boolean {
+function shouldShowPriceInfo(product: SaleProduct): boolean {
   const sortOrder = getSortOrder(product);
   return sortOrder >= 0 && sortOrder <= 6;
 }
 
-function formatPrice(value: unknown): string {
-  const raw = textValue(value);
-  const normalized = raw.replace(/\s/g, "").replace(",", ".");
-  const number = Number(normalized);
-
-  if (!Number.isFinite(number) || number <= 0) return "";
-
-  return new Intl.NumberFormat("ru-RU", {
-    maximumFractionDigits: 0,
-  }).format(number);
-}
-
-function getPromoPrices(product: SaleProduct): {
-  oldPrice: string;
-  price: string;
-} {
-  if (!isPromoCard(product)) {
-    return {
-      oldPrice: "",
-      price: "",
-    };
-  }
-
-  return {
-    oldPrice: formatPrice(getField(product, "oldPrice")),
-    price: formatPrice(getField(product, "price")),
-  };
+function isActive(product: SaleProduct): boolean {
+  const value = getField(product, "isActive");
+  return value !== false;
 }
 
 function ImagePlaceholder() {
@@ -212,11 +212,6 @@ function ImagePlaceholder() {
     </div>
   );
 }
-
-const priceFontStyle = {
-  fontFamily: "'Times New Roman', Times, serif",
-  fontVariantNumeric: "lining-nums tabular-nums",
-} as const;
 
 export default function SaleProducts({
   lang,
@@ -268,7 +263,7 @@ export default function SaleProducts({
             {Array.from({ length: 6 }).map((_, index) => (
               <div
                 key={index}
-                className="h-[410px] animate-pulse rounded-[34px] bg-white/70 shadow-[0_24px_70px_rgba(0,0,0,0.06)]"
+                className="h-[430px] animate-pulse rounded-[34px] bg-white/70 shadow-[0_24px_70px_rgba(0,0,0,0.06)]"
               />
             ))}
           </div>
@@ -291,7 +286,9 @@ export default function SaleProducts({
               const image = getImageUrl(product);
               const phone = getProductPhone(product, setting);
               const telegram = getProductTelegram(product, setting);
-              const promoPrices = getPromoPrices(product);
+              const price = getPrice(product);
+              const oldPrice = getOldPrice(product);
+              const showPriceInfo = shouldShowPriceInfo(product);
 
               const productId =
                 textValue(getField(product, "documentId")) ||
@@ -314,7 +311,7 @@ export default function SaleProducts({
                         });
                       }
                     }}
-                    className="relative block h-[330px] w-full overflow-hidden bg-white text-left sm:h-[350px]"
+                    className="relative block aspect-square w-full overflow-hidden bg-white text-left"
                     aria-label={title}
                   >
                     {image ? (
@@ -323,7 +320,7 @@ export default function SaleProducts({
                         alt={title}
                         fill
                         sizes="(max-width: 768px) 100vw, (max-width: 1280px) 50vw, 33vw"
-                        className="object-contain p-4 transition duration-500 group-hover:scale-[1.025]"
+                        className="object-cover transition duration-500 group-hover:scale-[1.025]"
                         priority={index < 6}
                         unoptimized
                       />
@@ -332,34 +329,45 @@ export default function SaleProducts({
                     )}
                   </button>
 
-                  {promoPrices.price ? (
-                    <div className="px-6 pt-4 text-center sm:px-7">
-                      {promoPrices.oldPrice ? (
-                        <div className="mb-1 flex items-center justify-center">
-                          <span
-                            className="relative inline-block text-[20px] font-bold leading-none text-[#9a9a9a]"
-                            style={priceFontStyle}
+                  {showPriceInfo ? (
+                    <div className="px-6 pb-2 pt-5 sm:px-7">
+                      <div className="flex min-h-[72px] flex-col items-center justify-center text-center">
+                        {oldPrice ? (
+                          <div
+                            className="relative inline-block text-[23px] font-bold leading-none tracking-[0.015em] text-[#9a9a9a]"
+                            style={{
+                              fontFamily: '"Times New Roman", Georgia, serif',
+                            }}
                           >
-                            {promoPrices.oldPrice}
-                            <span className="absolute left-[-4%] top-1/2 h-[2px] w-[108%] -translate-y-1/2 rounded-full bg-[#d71920]" />
-                          </span>
-                        </div>
-                      ) : null}
+                            {formatPrice(oldPrice)}
+                            <span className="absolute left-[-4%] top-1/2 h-[2px] w-[108%] -translate-y-1/2 rotate-[-3deg] bg-[#b5121b]" />
+                          </div>
+                        ) : (
+                          <div className="h-[23px]" />
+                        )}
 
-                      <div
-                        className="text-[32px] font-bold leading-none text-[#a40f1a]"
-                        style={priceFontStyle}
-                      >
-                        {promoPrices.price}
+                        {price ? (
+                          <div
+                            className="mt-2 text-[37px] font-black leading-none tracking-[0.015em] text-[#9b0008]"
+                            style={{
+                              fontFamily: '"Times New Roman", Georgia, serif',
+                            }}
+                          >
+                            {formatPrice(price)}
+                          </div>
+                        ) : (
+                          <div className="mt-2 text-[18px] font-black text-[#b5121b]">
+                            Цена по запросу
+                          </div>
+                        )}
                       </div>
                     </div>
                   ) : null}
 
                   <div
-                    className={[
-                      "grid grid-cols-2 gap-3 px-6 pb-6 sm:px-7 sm:pb-7",
-                      promoPrices.price ? "pt-3" : "pt-4",
-                    ].join(" ")}
+                    className={`grid grid-cols-2 gap-3 px-6 pb-6 sm:px-7 sm:pb-7 ${
+                      showPriceInfo ? "pt-2" : "pt-5"
+                    }`}
                   >
                     <a
                       href={phoneHref(phone)}
