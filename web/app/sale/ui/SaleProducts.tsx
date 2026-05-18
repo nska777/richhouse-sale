@@ -186,6 +186,23 @@ function formatPrice(value: unknown): string {
   }).format(number);
 }
 
+function getPromoPrices(product: SaleProduct): {
+  oldPrice: string;
+  price: string;
+} {
+  if (!isPromoCard(product)) {
+    return {
+      oldPrice: "",
+      price: "",
+    };
+  }
+
+  return {
+    oldPrice: formatPrice(getField(product, "oldPrice")),
+    price: formatPrice(getField(product, "price")),
+  };
+}
+
 function ImagePlaceholder() {
   return (
     <div className="flex h-full w-full items-center justify-center bg-[#ececec]">
@@ -269,9 +286,7 @@ export default function SaleProducts({
               const image = getImageUrl(product);
               const phone = getProductPhone(product, setting);
               const telegram = getProductTelegram(product, setting);
-              const promoPrice = isPromoCard(product)
-                ? formatPrice(getField(product, "price"))
-                : "";
+              const promoPrices = getPromoPrices(product);
 
               const productId =
                 textValue(getField(product, "documentId")) ||
@@ -312,10 +327,19 @@ export default function SaleProducts({
                     )}
                   </button>
 
-                  {promoPrice ? (
+                  {promoPrices.price ? (
                     <div className="px-6 pt-4 text-center sm:px-7">
-                      <div className="text-[26px] font-black tracking-[0.03em] text-[#a40f1a]">
-                        {promoPrice}
+                      {promoPrices.oldPrice ? (
+                        <div className="mb-1 flex items-center justify-center">
+                          <span className="relative inline-block text-[18px] font-black tracking-[0.02em] text-[#9a9a9a]">
+                            {promoPrices.oldPrice}
+                            <span className="absolute left-[-6%] top-1/2 h-[3px] w-[112%] -translate-y-1/2 -rotate-3 rounded-full bg-[#a40f1a]" />
+                          </span>
+                        </div>
+                      ) : null}
+
+                      <div className="text-[30px] font-black tracking-[0.03em] text-[#a40f1a]">
+                        {promoPrices.price}
                       </div>
                     </div>
                   ) : null}
@@ -323,7 +347,7 @@ export default function SaleProducts({
                   <div
                     className={[
                       "grid grid-cols-2 gap-3 px-6 pb-6 sm:px-7 sm:pb-7",
-                      promoPrice ? "pt-3" : "pt-4",
+                      promoPrices.price ? "pt-3" : "pt-4",
                     ].join(" ")}
                   >
                     <a
