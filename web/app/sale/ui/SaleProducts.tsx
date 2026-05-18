@@ -213,6 +213,11 @@ function ImagePlaceholder() {
   );
 }
 
+const priceFontStyle = {
+  fontFamily: "'Times New Roman', Times, serif",
+  fontVariantNumeric: "lining-nums tabular-nums",
+} as const;
+
 export default function SaleProducts({
   lang,
   setting,
@@ -332,22 +337,18 @@ export default function SaleProducts({
                       {promoPrices.oldPrice ? (
                         <div className="mb-1 flex items-center justify-center">
                           <span
-                            className="relative inline-block text-[20px] font-bold tracking-[0.02em] text-[#9a9a9a]"
-                            style={{
-                              fontFamily: "Georgia, 'Times New Roman', serif",
-                            }}
+                            className="relative inline-block text-[20px] font-bold leading-none text-[#9a9a9a]"
+                            style={priceFontStyle}
                           >
                             {promoPrices.oldPrice}
-                            <span className="absolute left-[-6%] top-1/2 h-[3px] w-[112%] -translate-y-1/2 -rotate-3 rounded-full bg-[#d71920]" />
+                            <span className="absolute left-[-4%] top-1/2 h-[2px] w-[108%] -translate-y-1/2 rounded-full bg-[#d71920]" />
                           </span>
                         </div>
                       ) : null}
 
                       <div
-                        className="text-[32px] font-bold leading-none tracking-[0.03em] text-[#a40f1a]"
-                        style={{
-                          fontFamily: "Georgia, 'Times New Roman', serif",
-                        }}
+                        className="text-[32px] font-bold leading-none text-[#a40f1a]"
+                        style={priceFontStyle}
                       >
                         {promoPrices.price}
                       </div>
