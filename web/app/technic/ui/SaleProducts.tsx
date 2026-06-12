@@ -166,24 +166,17 @@ function telegramHref(value: unknown): string {
 }
 
 function getProductPhone(
-  product: SaleProduct,
-  setting: SaleSetting | null,
+  _product: SaleProduct,
+  _setting: SaleSetting | null,
 ): string {
-  return (
-    textValue(getField(product, "phone")) ||
-    textValue((setting as unknown as Record<string, unknown> | null)?.phone) ||
-    "+998909256006"
-  );
+  return "+998 90 925 60 06";
 }
 
 function getProductTelegram(
-  product: SaleProduct,
-  setting: SaleSetting | null,
+  _product: SaleProduct,
+  _setting: SaleSetting | null,
 ): string {
-  return (
-    textValue(getField(product, "telegram")) ||
-    textValue((setting as unknown as Record<string, unknown> | null)?.telegram)
-  );
+  return "@RichHouseStas";
 }
 
 function getSortOrder(product: SaleProduct): number {
