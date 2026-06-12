@@ -104,11 +104,11 @@ function getImageUrl(mediaValue: unknown): string {
 }
 
 function phoneHref(): string {
-  return "tel:+998900021230";
+  return "tel:+998909256006";
 }
 
 function getDisplayPhone(): string {
-  return "+998 90 002 12 30";
+  return "+998 90 925 60 06";
 }
 
 function getBanner(setting: SaleSetting | null): string {
