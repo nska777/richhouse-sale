@@ -2,26 +2,20 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   images: {
-    dangerouslyAllowLocalIP: true,
-    remotePatterns: [
+    unoptimized: true,
+  },
+
+  async rewrites() {
+    return [
       {
-        protocol: "http",
-        hostname: "localhost",
-        port: "1337",
-        pathname: "/uploads/**",
+        source: "/api/:path*",
+        destination: "https://api.rframe.ru/api/:path*",
       },
       {
-        protocol: "http",
-        hostname: "127.0.0.1",
-        port: "1337",
-        pathname: "/uploads/**",
+        source: "/uploads/:path*",
+        destination: "https://api.rframe.ru/uploads/:path*",
       },
-      {
-        protocol: "https",
-        hostname: "api.rframe.ru",
-        pathname: "/uploads/**",
-      },
-    ],
+    ];
   },
 };
 
